@@ -43,6 +43,8 @@ def getWordScore(word: str, n: int) -> int:
     단어의 점수를 반환합니다. 해당 단어가 유효한 단어라고 가정합니다.
     [점수 규칙]에 따라 점수를 계산합니다.
     """
+    if len(word) ==0:
+        return 0
     word=list(word)
     score = sum(map(lambda x: LETTER_VALUES[x],word))*len(word)
     score=score+50 if len(set(word))>=n else score
@@ -52,17 +54,11 @@ def getWordScore(word: str, n: int) -> int:
 # Helper code
 # 이미 구현된 코드이며, 독스트링을 읽어서 사용 방법을 알아두세요.
 def displayHand(hand: dict[str, int]) -> None:
-    """
-    hand에 있는 글자를 출력합니다.
-    Example:
-    >>> displayHand({'a':1, 'x':2, 'l':3, 'e':1})
-    a x x l l l e
-    출력 순서는 중요하지 않습니다.
-    """
+
     for letter in hand.keys():
         for j in range(hand[letter]):
             print(letter,end=" ")
-        print()
+    print()
 def dealHand(n: int) -> dict[str, int]:
     """
         n개의 소문자를 포함하는 임의의 hand(패)를 반환합니다.
@@ -93,6 +89,12 @@ def updateHand(hand: dict[str, int], word: str) -> dict[str, int]:
     반환합니다.
     주의: 매개변수 hand를 수정하지 않습니다.
     """
+    word=list(word)
+    uhand=hand.copy()
+    for letter in word:
+        uhand[letter]-=1
+    return uhand
+
     # TO DO ...
     #
     # Problem #3: Valid Words
@@ -104,6 +106,20 @@ def isValidWord(word: str, hand: dict[str, int], wordList: list[str]) ->bool:
     그렇지 않으면 False를 반환합니다.
     주의: hand 또는 wordList를 변경하지 않습니다.
     """
+    thand=hand.copy()
+    val1=0
+    val2=0
+    if word in wordList:
+        val1=1
+    for letter in word:
+        try:
+            if thand[letter]<1:
+                return False
+        except:
+            return False
+    val2=1
+    return val1==1 and val2==1
+
 # TO DO ...
 #
 # Problem #4: Playing a hand
@@ -112,10 +128,14 @@ def calculateHandLen(hand: dict[str, int]) -> int:
     """
     현재 hand(패)의 길이(문자 수)를 반환합니다.
     """
-    # TO DO ...
-    #
-    # Problem #5: Playing a Hand
-    #
+    s=0
+    for letter in hand:
+        s+=hand[letter]
+    return s
+# TO DO ...
+#
+# Problem #5: Playing a Hand
+#
 def playHand(hand: dict[str, int], wordList: list[str], n: int) -> None:
     """
     사용자가 다음과 같이 주어진 패(hand)를 플레이할 수 있도록 합니다.
@@ -132,6 +152,24 @@ def playHand(hand: dict[str, int], wordList: list[str], n: int) -> None:
     * 패(hand)가 끝나면 단어 점수의 합계가 표시됩니다.
     출력할 메시지는 과제 안내문 2쪽의 Sample Output을 참고하세요.
     """
+    points = 0
+    while True:
+        if calculateHandLen(hand)==0:
+            print('Run out of letters.',end=' ')
+            break
+        print('Current Hand:',end=' ')
+        displayHand(hand)
+        word=input('Enter word, or a "." to end this hand: ')
+        if word == '.':
+            break
+        if not isValidWord(word, hand, wordList):
+            print('Invalid word, please try again.')
+        else:
+            score=getWordScore(word,n)
+            points+=score
+            hand=updateHand(hand, word)
+            print(f'"{word}" earned {score} points. Total: {points} points')
+    print(f'Total score: {points} points.')
 # TO DO ...
 #
 # Problem #6: Playing a game
@@ -147,8 +185,26 @@ def playGame(wordList: list[str]) -> None:
     알립니다.
     2) 플레이를 마치면 1단계부터 반복합니다.
     """
+
+    while True:
+        hand=0
+        cmd = input(': Enter n to deal a new hand, r to replay the last hand, or e to end game: ')
+        if cmd=='n':
+            hand=dealHand(HAND_SIZE)
+            playHand(hand, wordList, HAND_SIZE)
+        elif cmd=='r':
+            if hand==0:
+                print("You have not played a hand yet. Please play a new hand first!")
+            else:
+                hand=dealHand(HAND_SIZE)
+                playHand(hand, wordList, HAND_SIZE)
+        elif cmd=='e':
+            break
+        else:
+            print('Invalid command.')
+
+
 # TO DO ...
-print("playGame not yet implemented.") # <-- 함수 구현 후 지워주세요.
 #
 # Main Code
 #
