@@ -21,7 +21,7 @@ def loadWords() -> list[str]:
     inFile = open(WORDLIST_FILENAME, 'r')
     wordList = []
     for line in inFile:
-    wordList.append(line.strip().lower())
+        wordList.append(line.strip().lower())
     print(" ", len(wordList), "words loaded.")
     return wordList
 def getFrequencyDict(sequence: str) -> dict[str, int]:
@@ -31,7 +31,7 @@ def getFrequencyDict(sequence: str) -> dict[str, int]:
     """
     freq = {}
     for x in sequence:
-    freq[x] = freq.get(x,0) + 1
+        freq[x] = freq.get(x,0) + 1
     return freq
 # (end of helper code)
 # -----------------------------------
@@ -43,10 +43,14 @@ def getWordScore(word: str, n: int) -> int:
     단어의 점수를 반환합니다. 해당 단어가 유효한 단어라고 가정합니다.
     [점수 규칙]에 따라 점수를 계산합니다.
     """
-    # TO DO ...
-    # -----------------------------------
-    # Helper code
-    # 이미 구현된 코드이며, 독스트링을 읽어서 사용 방법을 알아두세요.
+    word=list(word)
+    score = sum(map(lambda x: LETTER_VALUES[x],word))*len(word)
+    score=score+50 if len(set(word))>=n else score
+    return score
+
+# -----------------------------------
+# Helper code
+# 이미 구현된 코드이며, 독스트링을 읽어서 사용 방법을 알아두세요.
 def displayHand(hand: dict[str, int]) -> None:
     """
     hand에 있는 글자를 출력합니다.
@@ -56,24 +60,24 @@ def displayHand(hand: dict[str, int]) -> None:
     출력 순서는 중요하지 않습니다.
     """
     for letter in hand.keys():
-    for j in range(hand[letter]):
-    print(letter,end=" ")
-    print()
-    def dealHand(n: int) -> dict[str, int]:
+        for j in range(hand[letter]):
+            print(letter,end=" ")
+        print()
+def dealHand(n: int) -> dict[str, int]:
     """
-    n개의 소문자를 포함하는 임의의 hand(패)를 반환합니다.
-    hand 중 최소 n/3(내림)개 문자는 모음입니다.
-    hand는 딕셔너리로 표현됩니다.
-    키(key)는 문자이고 값(value)은 해당 hand에 포함된 특정 문자의 개수입니다.
+        n개의 소문자를 포함하는 임의의 hand(패)를 반환합니다.
+        hand 중 최소 n/3(내림)개 문자는 모음입니다.
+        hand는 딕셔너리로 표현됩니다.
+        키(key)는 문자이고 값(value)은 해당 hand에 포함된 특정 문자의 개수입니다.
     """
     hand={}
     numVowels = n // 3
     for i in range(numVowels):
-    x = VOWELS[random.randint(0, len(VOWELS)-1)]
-    hand[x] = hand.get(x, 0) + 1
+        x = VOWELS[random.randint(0, len(VOWELS)-1)]
+        hand[x] = hand.get(x, 0) + 1
     for i in range(numVowels, n):
-    x = ALPHABETS[random.randint(0, len(ALPHABETS)-1)]
-    hand[x] = hand.get(x, 0) + 1
+        x = ALPHABETS[random.randint(0, len(ALPHABETS)-1)]
+        hand[x] = hand.get(x, 0) + 1
     return hand
 # (end of helper code)
 # -----------------------------------
