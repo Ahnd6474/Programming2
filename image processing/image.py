@@ -17,6 +17,18 @@ def flip_image(image: Image.Image, direction: str) -> Image.Image:
     """
     이미지를 좌우 또는 상하로 반전시켜 새로운 이미지를 반환합니다.
     """
+    x,y=image.size
+    if direction == 'horizontal':
+        key=lambda i,j:(x-i-1,j)
+    elif direction == 'vertical':
+        key=lambda i,j:(i,y-j-1)
+    else:
+        key=lambda i,j:(i,j)
+    trans=Image.new(image.mode, (x,y), color=0)
+    for i in range(x):
+        for j in range(y):
+            trans.putpixel(key(i,j),image.getpixel((i,j)))
+    return trans
 
 
 def rotate_image(image: Image.Image, angle: int) -> Image.Image:
@@ -42,19 +54,19 @@ def mosaic_average(image: Image.Image, block_size: int) -> Image.Image:
     이미지를 주어진 블록 크기로 나누어 블록 내부 픽셀의 평균 색으로 채워 모자이크 효과를 적용합니다.
     """
 
-    """
-    테스트 코드입니다. 
-    각 함수의 동작을 확인하기 위해 필요한 코드만 주석을 해제하세요.
-    """
+"""
+테스트 코드입니다. 
+각 함수의 동작을 확인하기 위해 필요한 코드만 주석을 해제하세요.
+"""
 
-    image_path = "images/kpoptiger.png"
-    # image_path = "images/pencils.png"
-    image = Image.open(image_path)
-    image.show()
+image_path = "images/kpoptiger.png"
+# image_path = "images/pencils.png"
+image = Image.open(image_path)
+image.show()
 
 # result_img = remove_image_section(image, 450, 650, "vertical")
 # result_img = remove_image_section(image, 400, 550, "horizontal")
-# result_img = flip_image(image, "horizontal")
+result_img = flip_image(image, "horizontal")
 # result_img = flip_image(image, "vertical")
 # result_img = rotate_image(image, 180)
 # result_img = translate_image(image, 300, 100)
@@ -62,4 +74,4 @@ def mosaic_average(image: Image.Image, block_size: int) -> Image.Image:
 # result_img = mosaic_average(image, 50)
 
 # result_img.save("images/output.png")
-# result_img.show()
+result_img.show()
