@@ -2,6 +2,30 @@ from PIL import Image
 # -------------------------------
 # Helper: mod for wrap
 # -------------------------------
+
+def mmul(matrix_a, matrix_b):
+    """
+    Multiplies two matrices manually using nested loops.
+    """
+    rows_a = len(matrix_a)
+    cols_a = len(matrix_a[0])
+    rows_b = len(matrix_b)
+    cols_b = len(matrix_b[0])
+
+    # Check for valid dimensions for matrix multiplication
+    if cols_a != rows_b:
+        raise ValueError("Number of columns in matrix A must equal number of rows in matrix B.")
+
+    # Initialize the result matrix with zeros
+    result = [[0 for _ in range(cols_b)] for _ in range(rows_a)]
+
+    # Perform matrix multiplication
+    for i in range(rows_a):
+        for j in range(cols_b):
+            for k in range(cols_a):  # or rows_b, since they are equal
+                result[i][j] += matrix_a[i][k] * matrix_b[k][j]
+    return result
+
 def _mod(a, m):
     # 파이썬 %는 음수에도 양수 나머지를 반환하므로 그대로 사용 가능
     return a % m
@@ -11,6 +35,10 @@ def remove_image_section(image: Image.Image, cut_start: int, cut_end: int, direc
     """
     이미지에서 지정된 범위의 행 또는 열을 제거하고, 남은 픽셀을 이동시켜 빈 공간을 메운 새 이미지를 반환합니다.
     """
+    x,y=image.size
+    d=(cut_start, 0, cut_end, y) if direction == 'vertical' else (0,cut_start, x, cut_end)
+    rimage=image.crop(d)
+    return rimage
 
 
 def flip_image(image: Image.Image, direction: str) -> Image.Image:
@@ -35,12 +63,15 @@ def rotate_image(image: Image.Image, angle: int) -> Image.Image:
     """
     이미지를 주어진 각도(90도의 배수)만큼 회전시켜 새로운 이미지를 반환합니다.
     """
-
+    rimage=image.rotate(angle)
+    return rimage
 
 def translate_image(image: Image.Image, shift_x: int, shift_y: int) -> Image.Image:
     """
     이미지를 지정된 만큼 평행이동하되, 경계를 넘어간 픽셀은 반대편에서 나타나도록 래핑 처리합니다.
     """
+    timage=image.translate((shift_x,shift_y))
+    return timage
 
 
 def mosaic_simple(image: Image.Image, block_size: int) -> Image.Image:
@@ -66,10 +97,10 @@ image.show()
 
 # result_img = remove_image_section(image, 450, 650, "vertical")
 # result_img = remove_image_section(image, 400, 550, "horizontal")
-result_img = flip_image(image, "horizontal")
+# result_img = flip_image(image, "horizontal")
 # result_img = flip_image(image, "vertical")
 # result_img = rotate_image(image, 180)
-# result_img = translate_image(image, 300, 100)
+result_img = translate_image(image, 300, 100)
 # result_img = mosaic_simple(image, 50)
 # result_img = mosaic_average(image, 50)
 
