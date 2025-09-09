@@ -70,14 +70,22 @@ def translate_image(image: Image.Image, shift_x: int, shift_y: int) -> Image.Ima
     """
     이미지를 지정된 만큼 평행이동하되, 경계를 넘어간 픽셀은 반대편에서 나타나도록 래핑 처리합니다.
     """
-    timage=image.translate((shift_x,shift_y))
-    return timage
+    x,y=image.size
+    trans=Image.new(image.mode, (x,y), color=0)
+    for i in range(x):
+        for j in range(y):
+            trans.putpixel(((i+shift_x)%x,(j+shift_y)%y),image.getpixel((i,j)))
+    return trans
 
 
 def mosaic_simple(image: Image.Image, block_size: int) -> Image.Image:
     """
     이미지를 주어진 블록 크기로 나누어 각 블록의 좌상단 픽셀 색으로 채워 모자이크 효과를 적용합니다.
     """
+    mimage=Image.new(image.mode, image.size, color=0)
+    for i in range(image.size[0]):
+        for j in range(image.size[1]):
+            mimage.putpixel((i,j),image.getpixel((i,j)))
 
 
 def mosaic_average(image: Image.Image, block_size: int) -> Image.Image:
