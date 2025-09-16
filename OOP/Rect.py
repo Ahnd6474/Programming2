@@ -1,42 +1,60 @@
 class Rect:
 	def __init__(self,x, y, w, h):
-		self._x=x
-		self._y=y
-		self._w=w
-		self._h=h
+		self.x=x
+		self.y=y
+		self.w=w
+		self.h=h
 	def __eq__(self,other):
-		if self._x==other._x and self._y==other._y and self._w==other._w and self._h==other._h:
+		if self.x==other.x and self.y==other.y and self.w==other.w and self.h==other.h:
 			return True
 		else:
 			return False
 	def collide(self,other):
-		if self._x-other._x <= other._w and self._y-other._y<=other._h and other._x-self._x<=other._w and other._y-self._y<=other._h:
+		if self.x-other.x <= other.w and self.y-other.y<=other.h and other.x-self.x<=other.w and other.y-self.y<=other.h:
 			return True
 		else:
 			return False
 	def __str__(self):
-		return f'Position ({self._x}, {self._y}), Size ({self._w}, {self._h})'
+		return f'Position ({self.x}, {self.y}), Size ({self.w}, {self.h})'
 	def move_ip(self,x,y):
-		self._x+=x
-		self._y+=y
+		self.x+=x
+		self.y+=y
 	def move(self,x,y):
-		return Rect(self._x+x,self._y+y,self._w,self._h)
+		return Rect(self.x+x,self.y+y,self.w,self.h)
 	def contain(self,other):
-		if self._x<=other._x and self._y<=other._y and self._w>=other._w and self._h>=other._h:
+		if self.x<=other.x and self.y<=other.y and self.w>=other.w and self.h>=other.h:
 			return True
 		return False
 	@property
 	def x(self):
-		return self._x
+		return self.x
 	@property
 	def y(self):
-		return self._y
+		return self.y
 	@property
 	def w(self):
-		return self._w
+		return self.w
 	@property
 	def h(self):
-		return self._h
+		return self.h
+
+	@h.setter
+	def h(self, value):
+		self._h = value
+	@w.setter
+	def w(self, value):
+		self._w = value
+
+
+	@y.setter
+	def y(self, value):
+		self._y = value
+
+
+	@x.setter
+	def x(self, value):
+		self._x = value
+
 
 x1, y1, w1, h1 = map(int, input('r1? ').split()) #생성할 첫 번째 사각형 r1의 x, y, width, height 입력
 x2, y2, w2, h2 = map(int, input('r2? ').split()) #생성할 두 번째 사각형 r2의 x, y, width, height 입력
