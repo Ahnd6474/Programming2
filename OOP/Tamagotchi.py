@@ -107,3 +107,9 @@ Hunger:  {self._hunger * 'o'}
 Boredom: {self._boredom * 'o'}
 Age:     {self._age}
 '''
+def create(name):
+    return Tamagotchi(name)
+while True:
+    c=input()
+    if ' ' in c:
+        
