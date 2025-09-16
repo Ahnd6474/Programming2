@@ -40,20 +40,20 @@ class Rect:
 
 	@h.setter
 	def h(self, value):
-		self._h = value
+		self.h = value
 	@w.setter
 	def w(self, value):
-		self._w = value
+		self.w = value
 
 
 	@y.setter
 	def y(self, value):
-		self._y = value
+		self.y = value
 
 
 	@x.setter
 	def x(self, value):
-		self._x = value
+		self.x = value
 
 
 x1, y1, w1, h1 = map(int, input('r1? ').split()) #생성할 첫 번째 사각형 r1의 x, y, width, height 입력
