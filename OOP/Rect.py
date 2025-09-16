@@ -1,5 +1,40 @@
 class Rect:
-	def __init__(self)
+	def __init__(self,x, y, w, h):
+		self._x=x
+		self._y=y
+		self._w=w
+		self._h=h
+	def __eq__(self,other):
+		if self._x==other._x and self._y==other._y and self._w==other._w and self._h==other._h:
+			return True
+		else:
+			return False
+	def colide(self,other):
+		if self._x-other._x < other._w and self._y-other._y<other._h and other._x-self._x<other._w and other._y-self._y<other._h:
+			return False
+		else:
+			return True
+	def __str__(self):
+		print(f'Position({self._x},{self._y}),Size({self._w},{self._h})')
+	def move_ip(self,x,y):
+		self._x+=x
+		self._y+=y
+	def move(self,x,y):
+		return Rect(self._x+x,self._y+y,self._w,self._h)
+	def contains(self,other):
+
+	@property
+	def x(self):
+		return self._x
+	@property
+	def y(self):
+		return self._y
+	@property
+	def w(self):
+		return self._w
+	@property
+	def h(self):
+		return self._h
 
 x1, y1, w1, h1 = map(int, input('r1? ').split()) #생성할 첫 번째 사각형 r1의 x, y, width, height 입력
 x2, y2, w2, h2 = map(int, input('r2? ').split()) #생성할 두 번째 사각형 r2의 x, y, width, height 입력
