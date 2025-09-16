@@ -9,20 +9,20 @@ class Rect:
 			return True
 		else:
 			return False
-	def colide(self,other):
-		if self._x-other._x < other._w and self._y-other._y<other._h and other._x-self._x<other._w and other._y-self._y<other._h:
-			return False
-		else:
+	def collide(self,other):
+		if self._x-other._x <= other._w and self._y-other._y<=other._h and other._x-self._x<=other._w and other._y-self._y<=other._h:
 			return True
+		else:
+			return False
 	def __str__(self):
-		print(f'Position({self._x},{self._y}),Size({self._w},{self._h})')
+		return f'Position({self._x},{self._y}),Size({self._w},{self._h})'
 	def move_ip(self,x,y):
 		self._x+=x
 		self._y+=y
 	def move(self,x,y):
 		return Rect(self._x+x,self._y+y,self._w,self._h)
-	def contains(self,other):
-		if self._x<other._x and self._y<other._y and self._w>other._w and self._h>other._h:
+	def contain(self,other):
+		if self._x<=other._x and self._y<=other._y and self._w>=other._w and self._h>=other._h:
 			return True
 		return False
 	@property
