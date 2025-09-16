@@ -22,7 +22,9 @@ class Rect:
 	def move(self,x,y):
 		return Rect(self._x+x,self._y+y,self._w,self._h)
 	def contains(self,other):
-
+		if self._x<other._x and self._y<other._y and self._w>other._w and self._h>other._h:
+			return True
+		return False
 	@property
 	def x(self):
 		return self._x
