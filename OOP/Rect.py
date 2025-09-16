@@ -15,7 +15,7 @@ class Rect:
 		else:
 			return False
 	def __str__(self):
-		return f'Position({self._x},{self._y}),Size({self._w},{self._h})'
+		return f'Position ({self._x}, {self._y}), Size ({self._w}, {self._h})'
 	def move_ip(self,x,y):
 		self._x+=x
 		self._y+=y
