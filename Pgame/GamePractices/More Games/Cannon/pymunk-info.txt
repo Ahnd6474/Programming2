@@ -1,0 +1,45 @@
+http://www.pymunk.org/en/latest/
+
+https://pypi.python.org/pypi/pymunk/#downloads
+
+get pymunk-4.0.0.win32.exe, and install
+ - found Python 3.5 
+
+pip list
+ -- shows pymunk 4.0.0
+
+installed in
+C:\Users\Ad\AppData\Local\Programs\Python\Python35-32\Lib\site-packages\pymunk
+
+
+downloaded pymunk-4.0.0.zip
+ -- contains docs, examples
+
+pymunk docs:
+  http://pymunk.readthedocs.io/en/latest/pymunk.html
+
+
+example doumentation:
+  http://www.pymunk.org/en/latest/examples.html
+
+- arrows.py  (uses pygame)
+- breakout.py
+- box2d_vertical_stack.py
+
+
+step-by=step example:
+  http://www.pymunk.org/en/latest/tutorials/SlideAndPinJoint.html
+
+
+chipmunk
+  http://chipmunk-physics.net/
+
+chipmunk docs
+  http://chipmunk-physics.net/release/ChipmunkLatest-Docs/
+
+tutorials
+  http://www.alexandre-gomes.com/articles/chipmunk/
+  https://www.raywenderlich.com/3128/chipmunk-tutorial-for-ios-how-to-create-a-simple-iphone-game
+   ^^^^^***
+
+  https://chipmunk-physics.net/tutorials/SimpleObjectiveChipmunk/
