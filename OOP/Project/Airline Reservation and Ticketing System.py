@@ -33,7 +33,13 @@ class Customer:
          "👤 고객 ID: C001, 이름: 김민지, 이메일: kim@example.com"
          형식으로 사용할 수 있도록 메소드를 정의해주세요.
     """
-
+    def __init__(self, customer_id: str, name: str, email: str):
+        self.customer_id = customer_id
+        self.name = name
+        self.email = email
+        self.reservation_history = []
+    def __str__(self):
+        return f"고객 ID: {self.customer_id}, 이름: {self.name}, 이메일: {self.email}"
     # TO DO ...
 
 
@@ -67,7 +73,7 @@ class AirlineSystem:
            입력받은 Flight 객체를 인스턴스 변수 flights 딕셔너리에 추가하세요.
            키는 항공편 번호(flight.flight_number)입니다.
         """
-        # TO DO ...
+        self.flights[flight.flight_number] = flight
         print(f"✈ 항공편 등록: {flight.flight_number}")
 
     def add_customer(self, customer: Customer) -> None:
@@ -77,7 +83,7 @@ class AirlineSystem:
            입력받은 Customer 객체를 인스턴스 변수 customers 딕셔너리에 추가하세요.
            키는 고객 ID(customer.customer_id)입니다.
         """
-        # TO DO ...
+        self.customers[customer.customer_id] = customer
         print(f"👤 고객 등록: {customer.customer_id}")
 
     def make_reservation(self, customer_id: str, flight_number: str, seat_number: str) -> Reservation | None:
@@ -96,6 +102,22 @@ class AirlineSystem:
         if customer_id not in self.customers:
             print(f"❌ 예약 실패: 고객 ID({customer_id})를 찾을 수 없음")
             return None
+        if flight_number not in self.flights:
+            print(f"❌ 예약 실패: 항공편({flight_number})을 찾을 수 없음")
+            return None
+        if self.flights[flight_number].check_availability() == 0:
+            print(f"❌ 예약 실패: 항공편({flight_number}) 잔여 좌석 부족")
+            return None
+        self.flights[flight_number].reserved_seats += 1
+        r=f'R{self.next_reservation_id:04d}'
+        reserve=Reservation(reservation_id=f'R{self.next_reservation_id:04d}',customer=self.customers[customer_id],flight=self.flights[flight_number],seat_number=seat_number)
+        self.flights[flight_number].reservations.append(reserve)
+        self.customers[customer_id].reservation_history.append(reserve)
+        self.next_reservation_id += 1
+        print(f"✅ 예약 성공: {r}")
+        return reserve
+
+
 
         # TO DO ...
 
@@ -109,6 +131,11 @@ class AirlineSystem:
           3. 만약 모든 고객의 기록을 확인해도 일치하는 예약을 찾지 못하면 None을 반환하세요.
         """
         # TO DO ...
+        for flights in self.flights:
+            for reservation in self.flights[flights].reservations:
+                if reservation.reservation_id == reservation_id:
+                    return reservation
+        return None
 
     def issue_ticket(self, reservation_id: str) -> None:
         """
@@ -119,6 +146,16 @@ class AirlineSystem:
           3. 유효한 예약이면 발권 상태(is_issued)를 True로 변경하세요.
         """
         # TO DO ...
+        reservation = self.find_reservation(reservation_id=reservation_id)
+        if reservation:
+            if not reservation.is_issued:
+                reservation.is_issued = True
+                print(f"🎫 발권 완료: {reservation_id}")
+                return
+            print(f"❌ 발권 실패: 예약 ID({reservation_id})는 이미 발권됨")
+            return
+        print(f"❌ 발권 실패: 예약 ID({reservation_id})를 찾을 수 없음")
+        return
 
     def cancel_reservation(self, reservation_id: str) -> None:
         """
@@ -130,6 +167,25 @@ class AirlineSystem:
           3. 항공편의 reserved_seats 수를 1 감소시키세요.
         """
         # TO DO ...
+        reservation = self.find_reservation(reservation_id=reservation_id)
+        if reservation:
+            for customer in self.customers.values():
+                for reserved in customer.reservation_history:
+                    if reserved.reservation_id == reservation_id:
+                        customer.reservation_history.remove(reserved)
+                        break
+            for flight in self.flights.values():
+                for reserved in flight.reservations:
+                    if reserved.reservation_id == reservation_id:
+                        flight.reservations.remove(reserved)
+                        flight.reserved_seats -= 1
+                        print(f"✅ 취소 완료: {reservation_id}")
+                        break
+            return
+        print(f"❌ 취소 실패: 예약 ID({reservation_id})를 찾을 수 없음")
+        return
+
+
 
 
 if __name__ == '__main__':
