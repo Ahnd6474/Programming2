@@ -98,7 +98,7 @@ def mosaic_average(image: Image.Image, block_size: int) -> Image.Image:
 각 함수의 동작을 확인하기 위해 필요한 코드만 주석을 해제하세요.
 """
 
-image_path = "images/kpoptiger.png"
+image_path = "../image processing/images/KPopTiger.png"
 # image_path = "images/pencils.png"
 image = Image.open(image_path)
 image.show()
