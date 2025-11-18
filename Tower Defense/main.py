@@ -105,7 +105,7 @@ class HexMap:
 
     @staticmethod
     def cube_to_axial(cube: Tuple[int, int, int]) -> Tuple[int, int]:
-        x, y, z = cube
+        x, z = cube
         return x, z
 
     @staticmethod
