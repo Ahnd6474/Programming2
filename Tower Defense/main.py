@@ -7,12 +7,11 @@ from typing import Dict, List, Optional, Tuple
 import pygame
 
 
-WIDTH, HEIGHT = 1000, 700
+WIDTH, HEIGHT = 1280, 900
 FPS = 60
-HEX_SIZE = 38
-MAP_COLS = 11
-MAP_ROWS = 7
-MAP_OFFSET = (120, 120)
+HEX_SIZE = 44
+MAP_RADIUS = 7
+MAP_OFFSET = (WIDTH // 2, HEIGHT // 2 + 20)
 FONT_NAME = "arial"
 
 
@@ -51,13 +50,12 @@ class Tile:
 
 
 class HexMap:
-    def __init__(self, cols: int, rows: int, hex_size: float, origin: Tuple[int, int]):
-        self.cols = cols
-        self.rows = rows
+    def __init__(self, radius: int, hex_size: float, origin: Tuple[int, int]):
+        self.radius = radius
         self.hex_size = hex_size
         self.origin = origin
         self.tiles: Dict[Tuple[int, int], Tile] = {}
-        self.paths: List[List[Tuple[int, int]]] = []
+        self.border_coords: List[Tuple[int, int]] = []
         self.generate_hex_grid()
 
     def axial_to_pixel(self, coord: Tuple[int, int]) -> Tuple[float, float]:
@@ -87,36 +85,56 @@ class HexMap:
 
     def generate_hex_grid(self) -> None:
         self.tiles.clear()
-        for q in range(self.cols):
-            for r in range(self.rows):
-                coord = (q, r)
-                center = self.axial_to_pixel(coord)
-                self.tiles[coord] = Tile(coord=coord, center=center)
-        self.generate_paths()
+        for q in range(-self.radius, self.radius + 1):
+            for r in range(-self.radius, self.radius + 1):
+                s = -q - r
+                if max(abs(q), abs(r), abs(s)) <= self.radius:
+                    coord = (q, r)
+                    center = self.axial_to_pixel(coord)
+                    self.tiles[coord] = Tile(coord=coord, center=center)
+        self.border_coords = [
+            coord
+            for coord in self.tiles
+            if self.hex_distance(coord, (0, 0)) == self.radius
+        ]
 
-    def generate_paths(self) -> None:
-        self.paths = []
-        center = (self.cols // 2, self.rows // 2)
-        directions = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
-        path_tiles = set()
-        for dq, dr in directions:
-            path: List[Tuple[int, int]] = []
-            q, r = center
-            while 0 <= q < self.cols and 0 <= r < self.rows:
-                coord = (q, r)
-                if coord in self.tiles:
-                    path.append(coord)
-                q += dq
-                r += dr
-            if len(path) >= 2:
-                from_edge = list(reversed(path))
-                self.paths.append(from_edge)
-                path_tiles.update(path)
-        for coord in path_tiles:
-            tile = self.tiles.get(coord)
-            if tile:
-                tile.is_path = True
-                tile.buildable = False
+    @staticmethod
+    def axial_to_cube(coord: Tuple[int, int]) -> Tuple[int, int, int]:
+        q, r = coord
+        return q, -q - r, r
+
+    @staticmethod
+    def cube_to_axial(cube: Tuple[int, int, int]) -> Tuple[int, int]:
+        x, y, z = cube
+        return x, z
+
+    @staticmethod
+    def hex_distance(a: Tuple[int, int], b: Tuple[int, int]) -> int:
+        ax, ay, az = HexMap.axial_to_cube(a)
+        bx, by, bz = HexMap.axial_to_cube(b)
+        return max(abs(ax - bx), abs(ay - by), abs(az - bz))
+
+    def axial_line(self, start: Tuple[int, int], end: Tuple[int, int]) -> List[Tuple[int, int]]:
+        n = self.hex_distance(start, end)
+        if n == 0:
+            return [start]
+        start_cube = self.axial_to_cube(start)
+        end_cube = self.axial_to_cube(end)
+        results = []
+        for i in range(n + 1):
+            t = i / n
+            x = start_cube[0] + (end_cube[0] - start_cube[0]) * t
+            y = start_cube[1] + (end_cube[1] - start_cube[1]) * t
+            z = start_cube[2] + (end_cube[2] - start_cube[2]) * t
+            results.append(self.cube_to_axial(self.cube_round(x, y, z)))
+        return results
+
+    def random_path_points(self) -> List[Tuple[float, float]]:
+        if len(self.border_coords) < 2:
+            return []
+        start, end = random.sample(self.border_coords, 2)
+        coords = self.axial_line(start, end)
+        return [self.tiles[coord].center for coord in coords if coord in self.tiles]
 
     def get_tile_at_pixel(self, x: float, y: float) -> Optional[Tile]:
         coord = self.pixel_to_axial(x, y)
@@ -125,15 +143,6 @@ class HexMap:
     def draw(self, surface: pygame.Surface, highlight_tile: Optional[Tile]) -> None:
         for tile in self.tiles.values():
             tile.draw(surface, self.hex_size - 1, tile is highlight_tile)
-
-    def path_points(self, index: int) -> List[Tuple[float, float]]:
-        if not self.paths:
-            return []
-        coords = self.paths[index % len(self.paths)]
-        return [self.tiles[coord].center for coord in coords if coord in self.tiles]
-
-    def all_path_points(self) -> List[List[Tuple[float, float]]]:
-        return [self.path_points(i) for i in range(len(self.paths))]
 
 
 @dataclass(frozen=True)
@@ -363,10 +372,9 @@ class WaveManager:
             self.active = False
 
     def spawn_enemy(self, game: "Game", entry: WaveEntry) -> None:
-        path_options = [points for points in game.hex_map.all_path_points() if len(points) >= 2]
-        if not path_options:
+        path = game.hex_map.random_path_points()
+        if len(path) < 2:
             return
-        path = random.choice(path_options)
         enemy_type = game.enemy_types[entry.enemy_type]
         enemy = Enemy(path, enemy_type)
         enemy.game = game
@@ -381,7 +389,7 @@ class Game:
         pygame.display.set_caption("Hex Tower Defense")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(FONT_NAME, 22)
-        self.hex_map = HexMap(MAP_COLS, MAP_ROWS, HEX_SIZE, MAP_OFFSET)
+        self.hex_map = HexMap(MAP_RADIUS, HEX_SIZE, MAP_OFFSET)
         self.enemies = pygame.sprite.Group()
         self.towers = pygame.sprite.Group()
         self.projectiles = pygame.sprite.Group()
