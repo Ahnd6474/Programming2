@@ -60,7 +60,11 @@ class Player(pygame.sprite.Sprite):
 		     2. pygame.time.get_ticks() 함수는 pygame.init() 후 경과한 시간(millisecond)을 리턴해줍니다.
 		"""
 
-		# 코드를 추가하세요.
+		now = pygame.time.get_ticks()
+		if now - self.last_shot_time >= self.shoot_delay:
+			self.last_shot_time = now
+			return Bullet(self.rect.centerx, self.rect.top)
+		return None
 
 
 
@@ -84,7 +88,13 @@ class Stone(pygame.sprite.Sprite):
 		      즉, 오른쪽 벽에 닿으면 speedx의 부호를 바꿔서 왼쪽으로 이동시킵니다.
 		"""
 
-		# 코드를 추가하세요.
+		self.rect.x += self.speedx
+		if self.rect.left <= WALL_THICKNESS or self.rect.right >= SCREEN_WIDTH - WALL_THICKNESS:
+			self.speedx *= -1
+			if self.rect.left <= WALL_THICKNESS:
+				self.rect.left = WALL_THICKNESS
+			if self.rect.right >= SCREEN_WIDTH - WALL_THICKNESS:
+				self.rect.right = SCREEN_WIDTH - WALL_THICKNESS
 
 
 
@@ -174,7 +184,19 @@ class Game:
 			  생성된 돌은 돌 그룹(stones)과 모든 스프라이트 그룹(all_sprites)에 추가해야 합니다.
 		"""
 
-		# 코드를 추가하세요.
+		for _ in range(count):
+			placed = False
+			attempts = 0
+			while not placed and attempts < 200:
+				attempts += 1
+				stone = Stone()
+				if not pygame.sprite.spritecollide(stone, self.stones, False):
+					self.stones.add(stone)
+					self.all_sprites.add(stone)
+					placed = True
+			if not placed:
+				self.stones.add(stone)
+				self.all_sprites.add(stone)
 
 
 
@@ -192,7 +214,16 @@ class Game:
 			if event.type == QUIT:
 				self.running = False
 
-			# 코드를 추가하세요.
+			if event.type == KEYDOWN:
+				if not self.game_over and event.key == K_SPACE and self.bullets_remaining > 0:
+					bullet = self.player.shoot()
+					if bullet:
+						self.all_sprites.add(bullet)
+						self.bullets.add(bullet)
+						self.bullets_remaining -= 1
+				if self.game_over and event.key in (K_RETURN, K_KP_ENTER):
+					self.game_over = False
+					self.setup()
 
 
 
@@ -216,7 +247,24 @@ class Game:
 		               각 돌에 대해 50%의 확률로 새로운 돌이 하나씩 생성하도록 구현하세요.
 		"""
 
-		# 코드를 추가하세요.
+		if pygame.sprite.spritecollide(self.player, self.stones, False):
+			self.player.reset()
+
+		collisions = pygame.sprite.groupcollide(self.stones, self.bullets, True, True)
+		for _stone, _bullets in collisions.items():
+			if random.random() < 0.5:
+				placed = False
+				attempts = 0
+				while not placed and attempts < 200:
+					attempts += 1
+					new_stone = Stone()
+					if not pygame.sprite.spritecollide(new_stone, self.stones, False):
+						self.stones.add(new_stone)
+						self.all_sprites.add(new_stone)
+						placed = True
+				if not placed:
+					self.stones.add(new_stone)
+					self.all_sprites.add(new_stone)
 
 
 
@@ -259,7 +307,12 @@ class Game:
 			self.draw_text(f"Your Time: {self.final_time / 1000:.2f} sec", 60, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, "black")
 			self.draw_text("Press Enter to Restart", 55, SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.85, "gray")
 
-		# 코드를 추가하세요.
+		else:
+			elapsed = pygame.time.get_ticks() - self.start_time
+			self.draw_text(f"Time: {elapsed / 1000:.2f} sec", 40, 10, 10, "black", align="left")
+			self.draw_text(f"Bullets: {self.bullets_remaining}", 40, SCREEN_WIDTH - 10, 10, "black", align="right")
+
+		pygame.display.flip()
 
 
 
