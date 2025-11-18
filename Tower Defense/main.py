@@ -50,10 +50,17 @@ class Tile:
 
 
 class HexMap:
-    def __init__(self, radius: int, hex_size: float, origin: Tuple[int, int]):
+    def __init__(
+        self,
+        radius: int,
+        hex_size: float,
+        origin: Tuple[int, int],
+        base_coord: Tuple[int, int] = (0, 0),
+    ):
         self.radius = radius
         self.hex_size = hex_size
         self.origin = origin
+        self.base_coord = base_coord
         self.tiles: Dict[Tuple[int, int], Tile] = {}
         self.border_coords: List[Tuple[int, int]] = []
         self.generate_hex_grid()
@@ -92,6 +99,8 @@ class HexMap:
                     coord = (q, r)
                     center = self.axial_to_pixel(coord)
                     self.tiles[coord] = Tile(coord=coord, center=center)
+        if self.base_coord in self.tiles:
+            self.tiles[self.base_coord].buildable = False
         self.border_coords = [
             coord
             for coord in self.tiles
@@ -129,11 +138,11 @@ class HexMap:
             results.append(self.cube_to_axial(self.cube_round(x, y, z)))
         return results
 
-    def random_path_points(self) -> List[Tuple[float, float]]:
-        if len(self.border_coords) < 2:
+    def path_from_border_to_base(self) -> List[Tuple[float, float]]:
+        if not self.border_coords or self.base_coord not in self.tiles:
             return []
-        start, end = random.sample(self.border_coords, 2)
-        coords = self.axial_line(start, end)
+        start = random.choice(self.border_coords)
+        coords = self.axial_line(start, self.base_coord)
         return [self.tiles[coord].center for coord in coords if coord in self.tiles]
 
     def get_tile_at_pixel(self, x: float, y: float) -> Optional[Tile]:
@@ -372,7 +381,7 @@ class WaveManager:
             self.active = False
 
     def spawn_enemy(self, game: "Game", entry: WaveEntry) -> None:
-        path = game.hex_map.random_path_points()
+        path = game.hex_map.path_from_border_to_base()
         if len(path) < 2:
             return
         enemy_type = game.enemy_types[entry.enemy_type]
@@ -380,6 +389,23 @@ class WaveManager:
         enemy.game = game
         game.enemies.add(enemy)
         self.spawned_in_entry += 1
+
+
+class HomeBase:
+    def __init__(self, tile: Tile):
+        self.tile = tile
+        self.radius = 32
+        self.font = pygame.font.SysFont(FONT_NAME, 20)
+
+    def draw(self, surface: pygame.Surface, lives: int) -> None:
+        center = self.tile.center
+        outer_color = (80, 160, 220)
+        inner_color = (20, 35, 60)
+        pygame.draw.circle(surface, outer_color, center, self.radius)
+        pygame.draw.circle(surface, inner_color, center, self.radius - 8)
+        text = self.font.render(str(max(lives, 0)), True, (240, 240, 240))
+        text_rect = text.get_rect(center=center)
+        surface.blit(text, text_rect)
 
 
 class Game:
@@ -412,7 +438,8 @@ class Game:
                 WaveEntry("tank", 6, 1.2),
             ]),
         ])
-        self.selected_tile: Optional[Tile] = None
+        self.home_base = HomeBase(self.hex_map.tiles[self.hex_map.base_coord])
+        self.selected_tile: Optional[Tile] = self.hex_map.tiles.get(self.hex_map.base_coord)
         self.running = True
         self.wave_manager.start_next_wave()
 
@@ -438,10 +465,39 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_n:
                     self.wave_manager.start_next_wave()
+                elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    if self.selected_tile:
+                        self.try_build_tower(self.selected_tile)
                 elif pygame.K_1 <= event.key <= pygame.K_9:
                     index = event.key - pygame.K_1
                     if index < len(self.tower_keys):
                         self.selected_tower_key = self.tower_keys[index]
+                else:
+                    self.handle_keyboard_selection(event.key)
+
+    def handle_keyboard_selection(self, key: int) -> None:
+        if not self.selected_tile:
+            self.selected_tile = self.hex_map.tiles.get(self.hex_map.base_coord)
+            return
+        axial_moves = {
+            pygame.K_UP: (0, -1),
+            pygame.K_DOWN: (0, 1),
+            pygame.K_LEFT: (-1, 0),
+            pygame.K_RIGHT: (1, 0),
+            pygame.K_w: (0, -1),
+            pygame.K_s: (0, 1),
+            pygame.K_a: (-1, 0),
+            pygame.K_d: (1, 0),
+            pygame.K_q: (-1, 1),
+            pygame.K_e: (1, -1),
+        }
+        if key not in axial_moves:
+            return
+        dq, dr = axial_moves[key]
+        coord = self.selected_tile.coord
+        new_coord = (coord[0] + dq, coord[1] + dr)
+        if new_coord in self.hex_map.tiles:
+            self.selected_tile = self.hex_map.tiles[new_coord]
 
     def try_build_tower(self, tile: Tile) -> None:
         if not tile.buildable or tile.tower is not None:
@@ -466,6 +522,7 @@ class Game:
     def draw(self) -> None:
         self.screen.fill((15, 20, 35))
         self.hex_map.draw(self.screen, self.selected_tile)
+        self.home_base.draw(self.screen, self.lives)
         self.towers.draw(self.screen)
         self.enemies.draw(self.screen)
         self.projectiles.draw(self.screen)
@@ -489,7 +546,7 @@ class Game:
             f"Wave: {wave_current}/{wave_total}",
             f"선택 타워: {selected_type.name} (비용 {selected_type.cost})",
             f"[숫자1~{len(self.tower_keys)}] {tower_text}",
-            "클릭으로 건설 / N: 다음 웨이브",
+            "클릭 / Space: 건설, 화살/WASDQE 이동, N: 다음 웨이브",
         ]
         for i, text in enumerate(texts):
             label = self.font.render(text, True, (240, 240, 240))
