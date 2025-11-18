@@ -1,4 +1,5 @@
 import math
+import random
 import sys
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -12,7 +13,6 @@ HEX_SIZE = 38
 MAP_COLS = 11
 MAP_ROWS = 7
 MAP_OFFSET = (120, 120)
-TOWER_COST = 50
 FONT_NAME = "arial"
 
 
@@ -57,7 +57,7 @@ class HexMap:
         self.hex_size = hex_size
         self.origin = origin
         self.tiles: Dict[Tuple[int, int], Tile] = {}
-        self.path_coords: List[Tuple[int, int]] = []
+        self.paths: List[List[Tuple[int, int]]] = []
         self.generate_hex_grid()
 
     def axial_to_pixel(self, coord: Tuple[int, int]) -> Tuple[float, float]:
@@ -92,12 +92,31 @@ class HexMap:
                 coord = (q, r)
                 center = self.axial_to_pixel(coord)
                 self.tiles[coord] = Tile(coord=coord, center=center)
-        mid_row = self.rows // 2
-        self.path_coords = [(q, mid_row) for q in range(self.cols)]
-        for coord in self.path_coords:
-            if coord in self.tiles:
-                self.tiles[coord].is_path = True
-                self.tiles[coord].buildable = False
+        self.generate_paths()
+
+    def generate_paths(self) -> None:
+        self.paths = []
+        center = (self.cols // 2, self.rows // 2)
+        directions = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
+        path_tiles = set()
+        for dq, dr in directions:
+            path: List[Tuple[int, int]] = []
+            q, r = center
+            while 0 <= q < self.cols and 0 <= r < self.rows:
+                coord = (q, r)
+                if coord in self.tiles:
+                    path.append(coord)
+                q += dq
+                r += dr
+            if len(path) >= 2:
+                from_edge = list(reversed(path))
+                self.paths.append(from_edge)
+                path_tiles.update(path)
+        for coord in path_tiles:
+            tile = self.tiles.get(coord)
+            if tile:
+                tile.is_path = True
+                tile.buildable = False
 
     def get_tile_at_pixel(self, x: float, y: float) -> Optional[Tile]:
         coord = self.pixel_to_axial(x, y)
@@ -107,21 +126,39 @@ class HexMap:
         for tile in self.tiles.values():
             tile.draw(surface, self.hex_size - 1, tile is highlight_tile)
 
-    def path_points(self) -> List[Tuple[float, float]]:
-        return [self.tiles[coord].center for coord in self.path_coords if coord in self.tiles]
+    def path_points(self, index: int) -> List[Tuple[float, float]]:
+        if not self.paths:
+            return []
+        coords = self.paths[index % len(self.paths)]
+        return [self.tiles[coord].center for coord in coords if coord in self.tiles]
+
+    def all_path_points(self) -> List[List[Tuple[float, float]]]:
+        return [self.path_points(i) for i in range(len(self.paths))]
+
+
+@dataclass(frozen=True)
+class EnemyType:
+    name: str
+    speed: float
+    hp: int
+    reward: int
+    color: Color
+    radius: int
 
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, path: List[Tuple[float, float]], speed: float, hp: int, reward: int):
+    def __init__(self, path: List[Tuple[float, float]], enemy_type: EnemyType):
         super().__init__()
         self.path = path
         self.current_index = 0
-        self.speed = speed
-        self.max_hp = hp
-        self.hp = hp
-        self.reward = reward
-        self.image = pygame.Surface((28, 28), pygame.SRCALPHA)
-        pygame.draw.circle(self.image, (220, 60, 60), (14, 14), 14)
+        self.enemy_type = enemy_type
+        self.speed = enemy_type.speed
+        self.max_hp = enemy_type.hp
+        self.hp = enemy_type.hp
+        self.reward = enemy_type.reward
+        diameter = enemy_type.radius * 2
+        self.image = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
+        pygame.draw.circle(self.image, enemy_type.color, (enemy_type.radius, enemy_type.radius), enemy_type.radius)
         self.rect = self.image.get_rect(center=self.path[0])
         self.pos = pygame.Vector2(self.rect.center)
         self.game: Optional["Game"] = None
@@ -189,17 +226,29 @@ class Projectile(pygame.sprite.Sprite):
         self.rect.center = self.pos
 
 
+@dataclass(frozen=True)
+class TowerType:
+    name: str
+    cost: int
+    range: float
+    fire_rate: float
+    damage: float
+    projectile_speed: float
+    color: Color
+
+
 class Tower(pygame.sprite.Sprite):
-    def __init__(self, tile: Tile):
+    def __init__(self, tile: Tile, tower_type: TowerType):
         super().__init__()
         self.tile = tile
-        self.range = 160
-        self.fire_rate = 0.9
-        self.damage = 20
-        self.projectile_speed = 320
+        self.tower_type = tower_type
+        self.range = tower_type.range
+        self.fire_rate = tower_type.fire_rate
+        self.damage = tower_type.damage
+        self.projectile_speed = tower_type.projectile_speed
         self.time_since_last_shot = 0.0
         self.image = pygame.Surface((50, 50), pygame.SRCALPHA)
-        pygame.draw.circle(self.image, (100, 160, 220), (25, 25), 24)
+        pygame.draw.circle(self.image, tower_type.color, (25, 25), 24)
         self.rect = self.image.get_rect(center=tile.center)
 
     def update(self, dt: float, game: "Game") -> None:
@@ -224,21 +273,64 @@ class Tower(pygame.sprite.Sprite):
         return closest
 
 
+TOWER_TYPES: Dict[str, TowerType] = {
+    "basic": TowerType(
+        name="기본",
+        cost=50,
+        range=170,
+        fire_rate=0.9,
+        damage=20,
+        projectile_speed=320,
+        color=(100, 160, 220),
+    ),
+    "sniper": TowerType(
+        name="저격",
+        cost=85,
+        range=280,
+        fire_rate=1.8,
+        damage=40,
+        projectile_speed=420,
+        color=(220, 200, 120),
+    ),
+    "rapid": TowerType(
+        name="연사",
+        cost=70,
+        range=140,
+        fire_rate=0.45,
+        damage=12,
+        projectile_speed=360,
+        color=(150, 220, 140),
+    ),
+}
+
+
+ENEMY_TYPES: Dict[str, EnemyType] = {
+    "grunt": EnemyType("기본", speed=60, hp=60, reward=18, color=(220, 80, 80), radius=14),
+    "swift": EnemyType("신속", speed=95, hp=45, reward=15, color=(120, 200, 140), radius=13),
+    "tank": EnemyType("탱커", speed=40, hp=130, reward=35, color=(170, 140, 220), radius=16),
+}
+
+
+@dataclass
+class WaveEntry:
+    enemy_type: str
+    count: int
+    interval: float
+
+
+@dataclass
 class WaveDefinition:
-    def __init__(self, count: int, interval: float, speed: float, hp: int):
-        self.count = count
-        self.interval = interval
-        self.speed = speed
-        self.hp = hp
+    entries: List[WaveEntry]
 
 
 class WaveManager:
     def __init__(self, waves: List[WaveDefinition]):
         self.waves = waves
         self.current_wave = -1
-        self.spawned = 0
         self.time_since_last_spawn = 0.0
         self.active = False
+        self.entry_index = 0
+        self.spawned_in_entry = 0
 
     def start_next_wave(self) -> None:
         if self.active:
@@ -246,7 +338,8 @@ class WaveManager:
         if self.current_wave + 1 >= len(self.waves):
             return
         self.current_wave += 1
-        self.spawned = 0
+        self.entry_index = 0
+        self.spawned_in_entry = 0
         self.time_since_last_spawn = 0.0
         self.active = True
 
@@ -255,17 +348,30 @@ class WaveManager:
             return
         self.time_since_last_spawn += dt
         wave = self.waves[self.current_wave]
-        if self.spawned < wave.count and self.time_since_last_spawn >= wave.interval:
-            self.spawn_enemy(game, wave)
-            self.time_since_last_spawn = 0.0
-        if self.spawned >= wave.count and not game.enemies:
+        while self.entry_index < len(wave.entries):
+            entry = wave.entries[self.entry_index]
+            if self.spawned_in_entry >= entry.count:
+                self.entry_index += 1
+                self.spawned_in_entry = 0
+                self.time_since_last_spawn = 0.0
+                continue
+            if self.time_since_last_spawn >= entry.interval:
+                self.spawn_enemy(game, entry)
+                self.time_since_last_spawn = 0.0
+            break
+        if self.entry_index >= len(wave.entries) and not game.enemies:
             self.active = False
 
-    def spawn_enemy(self, game: "Game", wave: WaveDefinition) -> None:
-        enemy = Enemy(game.hex_map.path_points(), wave.speed, wave.hp, reward=20)
+    def spawn_enemy(self, game: "Game", entry: WaveEntry) -> None:
+        path_options = [points for points in game.hex_map.all_path_points() if len(points) >= 2]
+        if not path_options:
+            return
+        path = random.choice(path_options)
+        enemy_type = game.enemy_types[entry.enemy_type]
+        enemy = Enemy(path, enemy_type)
         enemy.game = game
         game.enemies.add(enemy)
-        self.spawned += 1
+        self.spawned_in_entry += 1
 
 
 class Game:
@@ -279,12 +385,24 @@ class Game:
         self.enemies = pygame.sprite.Group()
         self.towers = pygame.sprite.Group()
         self.projectiles = pygame.sprite.Group()
+        self.enemy_types = ENEMY_TYPES
+        self.tower_types = TOWER_TYPES
+        self.tower_keys = list(self.tower_types.keys())
+        self.selected_tower_key = self.tower_keys[0]
         self.money = 200
         self.lives = 20
         self.wave_manager = WaveManager([
-            WaveDefinition(8, 1.0, 60, 60),
-            WaveDefinition(12, 0.8, 70, 80),
-            WaveDefinition(16, 0.7, 80, 100),
+            WaveDefinition([
+                WaveEntry("grunt", 8, 1.0),
+            ]),
+            WaveDefinition([
+                WaveEntry("grunt", 10, 0.9),
+                WaveEntry("swift", 6, 0.8),
+            ]),
+            WaveDefinition([
+                WaveEntry("swift", 10, 0.7),
+                WaveEntry("tank", 6, 1.2),
+            ]),
         ])
         self.selected_tile: Optional[Tile] = None
         self.running = True
@@ -312,16 +430,21 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_n:
                     self.wave_manager.start_next_wave()
+                elif pygame.K_1 <= event.key <= pygame.K_9:
+                    index = event.key - pygame.K_1
+                    if index < len(self.tower_keys):
+                        self.selected_tower_key = self.tower_keys[index]
 
     def try_build_tower(self, tile: Tile) -> None:
         if not tile.buildable or tile.tower is not None:
             return
-        if self.money < TOWER_COST:
+        tower_type = self.tower_types[self.selected_tower_key]
+        if self.money < tower_type.cost:
             return
-        tower = Tower(tile)
+        tower = Tower(tile, tower_type)
         tile.tower = tower
         self.towers.add(tower)
-        self.money -= TOWER_COST
+        self.money -= tower_type.cost
 
     def update(self, dt: float) -> None:
         self.wave_manager.update(dt, self)
@@ -344,11 +467,21 @@ class Game:
         pygame.display.flip()
 
     def draw_ui(self) -> None:
+        wave_total = len(self.wave_manager.waves)
+        wave_current = min(self.wave_manager.current_wave + 1, wave_total)
+        selected_type = self.tower_types[self.selected_tower_key]
+        tower_text = " / ".join(
+            f"{idx + 1}:{self.tower_types[key].name}({self.tower_types[key].cost})" +
+            ("*" if key == self.selected_tower_key else "")
+            for idx, key in enumerate(self.tower_keys)
+        )
         texts = [
             f"Money: {self.money}",
             f"Lives: {self.lives}",
-            f"Wave: {self.wave_manager.current_wave + 1}/{len(self.wave_manager.waves)}",
-            "Click to build tower (50). Press N for next wave.",
+            f"Wave: {wave_current}/{wave_total}",
+            f"선택 타워: {selected_type.name} (비용 {selected_type.cost})",
+            f"[숫자1~{len(self.tower_keys)}] {tower_text}",
+            "클릭으로 건설 / N: 다음 웨이브",
         ]
         for i, text in enumerate(texts):
             label = self.font.render(text, True, (240, 240, 240))
