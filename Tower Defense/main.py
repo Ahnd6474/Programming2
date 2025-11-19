@@ -415,17 +415,12 @@ class Game:
         pygame.display.set_caption("Hex Tower Defense")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(FONT_NAME, 22)
-        self.hex_map = HexMap(MAP_RADIUS, HEX_SIZE, MAP_OFFSET)
-        self.enemies = pygame.sprite.Group()
-        self.towers = pygame.sprite.Group()
-        self.projectiles = pygame.sprite.Group()
+        self.title_font = pygame.font.SysFont(FONT_NAME, 64)
+        self.sub_title_font = pygame.font.SysFont(FONT_NAME, 30)
+        self.button_font = pygame.font.SysFont(FONT_NAME, 26)
         self.enemy_types = ENEMY_TYPES
         self.tower_types = TOWER_TYPES
-        self.tower_keys = list(self.tower_types.keys())
-        self.selected_tower_key = self.tower_keys[0]
-        self.money = 200
-        self.lives = 20
-        self.wave_manager = WaveManager([
+        self.wave_definitions = [
             WaveDefinition([
                 WaveEntry("grunt", 8, 1.0),
             ]),
@@ -437,11 +432,40 @@ class Game:
                 WaveEntry("swift", 10, 0.7),
                 WaveEntry("tank", 6, 1.2),
             ]),
-        ])
+        ]
+        self.state = "intro"
+        self.running = True
+        self.rules_text = [
+            "목표: 기지(중앙 육각형)를 끝까지 방어하세요!",
+            "웨이브: N 키로 다음 웨이브를 시작할 수 있습니다.",
+            "타워 건설: 마우스 클릭 또는 Space로 선택 타워를 건설하세요.",
+            "탐색: 화살표, WASD, QE 키로 타일을 이동합니다.",
+            "숫자 키로 타워 종류를 변경할 수 있습니다.",
+        ]
+        self.intro_buttons = {
+            "start": pygame.Rect(WIDTH // 2 - 170, HEIGHT // 2 + 20, 340, 70),
+            "rules": pygame.Rect(WIDTH // 2 - 170, HEIGHT // 2 + 110, 340, 70),
+        }
+        self.rules_back_button = pygame.Rect(WIDTH // 2 - 130, HEIGHT - 140, 260, 60)
+        self.outro_buttons = {
+            "menu": pygame.Rect(WIDTH // 2 - 150, HEIGHT - 170, 300, 70),
+        }
+        self.game_result = ""
+        self.outro_summary: List[str] = []
+        self.setup_gameplay()
+
+    def setup_gameplay(self) -> None:
+        self.hex_map = HexMap(MAP_RADIUS, HEX_SIZE, MAP_OFFSET)
+        self.enemies = pygame.sprite.Group()
+        self.towers = pygame.sprite.Group()
+        self.projectiles = pygame.sprite.Group()
+        self.tower_keys = list(self.tower_types.keys())
+        self.selected_tower_key = self.tower_keys[0]
+        self.money = 200
+        self.lives = 20
+        self.wave_manager = WaveManager(self.wave_definitions)
         self.home_base = HomeBase(self.hex_map.tiles[self.hex_map.base_coord])
         self.selected_tile: Optional[Tile] = self.hex_map.tiles.get(self.hex_map.base_coord)
-        self.running = True
-        self.wave_manager.start_next_wave()
 
     def run(self) -> None:
         while self.running:
@@ -456,24 +480,59 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            elif event.type == pygame.MOUSEMOTION:
-                self.selected_tile = self.hex_map.get_tile_at_pixel(*event.pos)
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                tile = self.hex_map.get_tile_at_pixel(*event.pos)
-                if tile:
-                    self.try_build_tower(tile)
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_n:
-                    self.wave_manager.start_next_wave()
-                elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
-                    if self.selected_tile:
-                        self.try_build_tower(self.selected_tile)
-                elif pygame.K_1 <= event.key <= pygame.K_9:
-                    index = event.key - pygame.K_1
-                    if index < len(self.tower_keys):
-                        self.selected_tower_key = self.tower_keys[index]
-                else:
-                    self.handle_keyboard_selection(event.key)
+                continue
+            if self.state == "intro":
+                self.handle_intro_events(event)
+            elif self.state == "rules":
+                self.handle_rules_events(event)
+            elif self.state == "playing":
+                self.handle_gameplay_events(event)
+            elif self.state == "outro":
+                self.handle_outro_events(event)
+
+    def handle_intro_events(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.intro_buttons["start"].collidepoint(event.pos):
+                self.start_game()
+            elif self.intro_buttons["rules"].collidepoint(event.pos):
+                self.state = "rules"
+
+    def handle_rules_events(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rules_back_button.collidepoint(event.pos):
+                self.state = "intro"
+
+    def handle_outro_events(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.outro_buttons["menu"].collidepoint(event.pos):
+                self.state = "intro"
+                self.game_result = ""
+                self.outro_summary = []
+
+    def handle_gameplay_events(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEMOTION:
+            self.selected_tile = self.hex_map.get_tile_at_pixel(*event.pos)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            tile = self.hex_map.get_tile_at_pixel(*event.pos)
+            if tile:
+                self.try_build_tower(tile)
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_n:
+                self.wave_manager.start_next_wave()
+            elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                if self.selected_tile:
+                    self.try_build_tower(self.selected_tile)
+            elif pygame.K_1 <= event.key <= pygame.K_9:
+                index = event.key - pygame.K_1
+                if index < len(self.tower_keys):
+                    self.selected_tower_key = self.tower_keys[index]
+            else:
+                self.handle_keyboard_selection(event.key)
+
+    def start_game(self) -> None:
+        self.setup_gameplay()
+        self.state = "playing"
+        self.wave_manager.start_next_wave()
 
     def handle_keyboard_selection(self, key: int) -> None:
         if not self.selected_tile:
@@ -511,6 +570,8 @@ class Game:
         self.money -= tower_type.cost
 
     def update(self, dt: float) -> None:
+        if self.state != "playing":
+            return
         self.wave_manager.update(dt, self)
         for enemy in list(self.enemies):
             enemy.update(dt, self)
@@ -518,8 +579,23 @@ class Game:
             tower.update(dt, self)
         for projectile in list(self.projectiles):
             projectile.update(dt)
+        if self.lives <= 0:
+            self.finish_game("방어 실패!")
+        elif self.all_waves_cleared():
+            self.finish_game("모든 웨이브 방어 성공!")
 
     def draw(self) -> None:
+        if self.state == "intro":
+            self.draw_intro()
+        elif self.state == "rules":
+            self.draw_rules()
+        elif self.state == "playing":
+            self.draw_gameplay()
+        elif self.state == "outro":
+            self.draw_outro()
+        pygame.display.flip()
+
+    def draw_gameplay(self) -> None:
         self.screen.fill((15, 20, 35))
         self.hex_map.draw(self.screen, self.selected_tile)
         self.home_base.draw(self.screen, self.lives)
@@ -529,7 +605,6 @@ class Game:
         for enemy in self.enemies:
             enemy.draw_health(self.screen)
         self.draw_ui()
-        pygame.display.flip()
 
     def draw_ui(self) -> None:
         wave_total = len(self.wave_manager.waves)
@@ -551,6 +626,68 @@ class Game:
         for i, text in enumerate(texts):
             label = self.font.render(text, True, (240, 240, 240))
             self.screen.blit(label, (20, 20 + i * 26))
+
+    def draw_intro(self) -> None:
+        self.screen.fill((8, 12, 25))
+        title = self.title_font.render("Hex Tower Defense", True, (245, 245, 245))
+        title_rect = title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 120))
+        self.screen.blit(title, title_rect)
+        subtitle = self.sub_title_font.render("기지를 지키기 위한 방어 전략을 세워보세요", True, (200, 200, 220))
+        self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 60)))
+        mouse_pos = pygame.mouse.get_pos()
+        self.draw_button(self.intro_buttons["start"], "게임 시작", mouse_pos)
+        self.draw_button(self.intro_buttons["rules"], "게임 규칙", mouse_pos)
+
+    def draw_rules(self) -> None:
+        self.screen.fill((10, 15, 30))
+        title = self.title_font.render("게임 규칙", True, (240, 240, 240))
+        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 140)))
+        for i, line in enumerate(self.rules_text):
+            label = self.sub_title_font.render(line, True, (230, 230, 240))
+            self.screen.blit(label, (120, 240 + i * 48))
+        self.draw_button(self.rules_back_button, "돌아가기", pygame.mouse.get_pos())
+
+    def draw_outro(self) -> None:
+        self.screen.fill((5, 10, 20))
+        title = self.title_font.render("게임 종료", True, (240, 240, 240))
+        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 150)))
+        result = self.sub_title_font.render(self.game_result or "", True, (200, 220, 255))
+        self.screen.blit(result, result.get_rect(center=(WIDTH // 2, 230)))
+        for i, line in enumerate(self.outro_summary):
+            label = self.button_font.render(line, True, (220, 220, 230))
+            self.screen.blit(label, label.get_rect(center=(WIDTH // 2, 320 + i * 40)))
+        self.draw_button(self.outro_buttons["menu"], "메인 메뉴로", pygame.mouse.get_pos())
+
+    def draw_button(self, rect: pygame.Rect, text: str, mouse_pos: Tuple[int, int]) -> None:
+        hovered = rect.collidepoint(mouse_pos)
+        base_color = (70, 120, 210) if hovered else (40, 70, 140)
+        pygame.draw.rect(self.screen, base_color, rect, border_radius=14)
+        pygame.draw.rect(self.screen, (255, 255, 255), rect, width=2, border_radius=14)
+        label = self.button_font.render(text, True, (255, 255, 255))
+        self.screen.blit(label, label.get_rect(center=rect.center))
+
+    def finish_game(self, message: str) -> None:
+        if self.state != "playing":
+            return
+        total_waves = len(self.wave_manager.waves)
+        current_wave = max(0, self.wave_manager.current_wave + 1)
+        self.game_result = message
+        self.outro_summary = [
+            f"진행 웨이브: {current_wave}/{total_waves}",
+            f"남은 돈: {self.money}",
+            f"남은 목숨: {max(self.lives, 0)}",
+        ]
+        self.state = "outro"
+
+    def all_waves_cleared(self) -> bool:
+        if not self.wave_manager.waves:
+            return False
+        last_wave_index = len(self.wave_manager.waves) - 1
+        return (
+            self.wave_manager.current_wave == last_wave_index
+            and not self.wave_manager.active
+            and not self.enemies
+        )
 
 
 if __name__ == "__main__":
