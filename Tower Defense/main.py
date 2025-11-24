@@ -162,6 +162,12 @@ class EnemyType:
     reward: int
     color: Color
     radius: int
+    melee_damage: int
+    melee_range: float
+    melee_cooldown: float
+    ranged_damage: int
+    ranged_range: float
+    ranged_cooldown: float
 
 
 class Enemy(pygame.sprite.Sprite):
@@ -187,12 +193,16 @@ class Enemy(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=self.path[0])
         self.pos = pygame.Vector2(self.rect.center)
         self.game: Optional["Game"] = None
+        self.melee_timer = 0.0
+        self.ranged_timer = 0.0
 
     def update(self, dt: float, game: "Game") -> None:
         if self.current_index >= len(self.path):
             game.lives -= 1
             self.kill()
             return
+        self.melee_timer += dt
+        self.ranged_timer += dt
         target = pygame.Vector2(self.path[self.current_index])
         direction = target - self.pos
         distance = direction.length()
@@ -207,6 +217,7 @@ class Enemy(pygame.sprite.Sprite):
         effective_speed = self.base_speed * game.get_speed_modifier(self.pos)
         self.pos += direction * effective_speed * dt
         self.rect.center = self.pos
+        self.try_attack_towers(game)
 
     def take_damage(self, amount: float, game: "Game") -> None:
         self.hp -= amount
@@ -223,6 +234,31 @@ class Enemy(pygame.sprite.Sprite):
         inner = bar_rect.copy()
         inner.width = int(bar_w * ratio)
         pygame.draw.rect(surface, (50, 200, 50), inner)
+
+    def try_attack_towers(self, game: "Game") -> None:
+        if not game.towers:
+            return
+        closest = None
+        closest_dist = float("inf")
+        for tower in game.towers:
+            dist = pygame.Vector2(tower.rect.center).distance_to(self.rect.center)
+            if dist < closest_dist:
+                closest = tower
+                closest_dist = dist
+        if closest is None:
+            return
+        if (
+            closest_dist <= self.enemy_type.melee_range
+            and self.melee_timer >= self.enemy_type.melee_cooldown
+        ):
+            closest.take_damage(self.enemy_type.melee_damage)
+            self.melee_timer = 0.0
+        elif (
+            closest_dist <= self.enemy_type.ranged_range
+            and self.ranged_timer >= self.enemy_type.ranged_cooldown
+        ):
+            closest.take_damage(self.enemy_type.ranged_damage)
+            self.ranged_timer = 0.0
 
 
 class Projectile(pygame.sprite.Sprite):
@@ -264,6 +300,7 @@ class TowerType:
     is_wall: bool = False
     slow_factor: float = 1.0
     slow_radius: float = 0.0
+    max_hp: int = 160
 
 
 class Tower(pygame.sprite.Sprite):
@@ -279,6 +316,8 @@ class Tower(pygame.sprite.Sprite):
         self.level = 1
         self.max_level = 5
         self.is_wall = tower_type.is_wall
+        self.max_hp = tower_type.max_hp if not self.is_wall else tower_type.max_hp + 60
+        self.hp = self.max_hp
         self.image = pygame.Surface((50, 50), pygame.SRCALPHA)
         pygame.draw.circle(self.image, tower_type.color, (25, 25), 24)
         self.rect = self.image.get_rect(center=tile.center)
@@ -321,6 +360,29 @@ class Tower(pygame.sprite.Sprite):
             self.damage *= 1.18
             self.fire_rate = max(0.2, self.fire_rate * 0.92)
 
+    def take_damage(self, amount: float) -> None:
+        self.hp -= amount
+        if self.hp <= 0:
+            self.destroy()
+
+    def heal(self, amount: float) -> None:
+        self.hp = min(self.max_hp, self.hp + amount)
+
+    def destroy(self) -> None:
+        if self.tile.tower is self:
+            self.tile.tower = None
+        self.kill()
+
+    def draw_health(self, surface: pygame.Surface) -> None:
+        bar_w = self.rect.width
+        ratio = max(self.hp, 0) / self.max_hp
+        bar_rect = pygame.Rect(0, 0, bar_w, 4)
+        bar_rect.midtop = (self.rect.centerx, self.rect.bottom + 6)
+        pygame.draw.rect(surface, (40, 40, 40), bar_rect)
+        inner = bar_rect.copy()
+        inner.width = int(bar_w * ratio)
+        pygame.draw.rect(surface, (80, 200, 80), inner)
+
 
 TOWER_TYPES: Dict[str, TowerType] = {
     "basic": TowerType(
@@ -331,6 +393,7 @@ TOWER_TYPES: Dict[str, TowerType] = {
         damage=20,
         projectile_speed=320,
         color=(100, 160, 220),
+        max_hp=160,
     ),
     "sniper": TowerType(
         name="Sniper",
@@ -340,6 +403,7 @@ TOWER_TYPES: Dict[str, TowerType] = {
         damage=40,
         projectile_speed=420,
         color=(220, 200, 120),
+        max_hp=140,
     ),
     "rapid": TowerType(
         name="Rapid",
@@ -349,6 +413,7 @@ TOWER_TYPES: Dict[str, TowerType] = {
         damage=12,
         projectile_speed=360,
         color=(150, 220, 140),
+        max_hp=150,
     ),
     "wall": TowerType(
         name="Wall",
@@ -361,14 +426,54 @@ TOWER_TYPES: Dict[str, TowerType] = {
         is_wall=True,
         slow_factor=0.35,
         slow_radius=65,
+        max_hp=200,
     ),
 }
 
 
 ENEMY_TYPES: Dict[str, EnemyType] = {
-    "grunt": EnemyType("Grunt", speed=60, hp=60, reward=18, color=(220, 80, 80), radius=14),
-    "swift": EnemyType("Swift", speed=95, hp=45, reward=15, color=(120, 200, 140), radius=13),
-    "tank": EnemyType("Tank", speed=40, hp=130, reward=35, color=(170, 140, 220), radius=16),
+    "grunt": EnemyType(
+        "Grunt",
+        speed=60,
+        hp=60,
+        reward=18,
+        color=(220, 80, 80),
+        radius=14,
+        melee_damage=8,
+        melee_range=26,
+        melee_cooldown=1.1,
+        ranged_damage=5,
+        ranged_range=140,
+        ranged_cooldown=2.4,
+    ),
+    "swift": EnemyType(
+        "Swift",
+        speed=95,
+        hp=45,
+        reward=15,
+        color=(120, 200, 140),
+        radius=13,
+        melee_damage=6,
+        melee_range=26,
+        melee_cooldown=0.8,
+        ranged_damage=4,
+        ranged_range=120,
+        ranged_cooldown=1.8,
+    ),
+    "tank": EnemyType(
+        "Tank",
+        speed=40,
+        hp=130,
+        reward=35,
+        color=(170, 140, 220),
+        radius=16,
+        melee_damage=14,
+        melee_range=32,
+        melee_cooldown=1.3,
+        ranged_damage=9,
+        ranged_range=170,
+        ranged_cooldown=2.8,
+    ),
 }
 
 
@@ -533,6 +638,7 @@ class Game:
             "Building: click a tile or press Space/Enter to build the selected item.",
             "Navigation: move the selector with arrows, WASD, or Q/E diagonals.",
             "Numbers: change build type with 1-9. Click an existing tower to upgrade it.",
+            "Breaks: towers can be healed with H during wave breaks using coins.",
         ]
         self.intro_buttons = {
             "start": pygame.Rect(WIDTH // 2 - 170, HEIGHT // 2 + 20, 340, 70),
@@ -615,6 +721,8 @@ class Game:
             elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
                 if self.selected_tile:
                     self.try_build_tower(self.selected_tile)
+            elif event.key == pygame.K_h:
+                self.try_heal_selected_tower()
             elif pygame.K_1 <= event.key <= pygame.K_9:
                 index = event.key - pygame.K_1
                 if index < len(self.tower_keys):
@@ -674,6 +782,28 @@ class Game:
         self.money -= cost
         tower.upgrade()
 
+    def heal_cost(self, tower: Tower) -> int:
+        missing_hp = tower.max_hp - tower.hp
+        return max(1, math.ceil(missing_hp / 10))
+
+    def can_heal_towers(self) -> bool:
+        return not self.wave_manager.active and self.wave_manager.cooldown_remaining > 0
+
+    def try_heal_selected_tower(self) -> None:
+        if not self.selected_tile or not self.selected_tile.tower:
+            return
+        if not self.can_heal_towers():
+            return
+        tower = self.selected_tile.tower
+        missing_hp = tower.max_hp - tower.hp
+        if missing_hp <= 0:
+            return
+        cost = self.heal_cost(tower)
+        if self.money < cost:
+            return
+        self.money -= cost
+        tower.heal(missing_hp)
+
     def get_speed_modifier(self, position: pygame.Vector2) -> float:
         modifier = 1.0
         for tower in self.towers:
@@ -719,6 +849,8 @@ class Game:
         self.projectiles.draw(self.screen)
         for enemy in self.enemies:
             enemy.draw_health(self.screen)
+        for tower in self.towers:
+            tower.draw_health(self.screen)
         self.draw_ui()
 
     def draw_ui(self) -> None:
@@ -734,6 +866,9 @@ class Game:
             "ready" if self.wave_manager.cooldown_remaining <= 0 else f"{self.wave_manager.cooldown_remaining:0.1f}s"
         )
         upgrade_text = "Click a built tower to upgrade it"
+        heal_text = "Healing available only during breaks (H key)."
+        if not self.can_heal_towers():
+            heal_text = "Healing disabled until the next break between waves."
         if self.selected_tile and self.selected_tile.tower:
             tower = self.selected_tile.tower
             if tower.level >= tower.max_level:
@@ -742,6 +877,12 @@ class Game:
                 upgrade_text = (
                     f"Upgrade cost: {tower.upgrade_cost()} (Lv {tower.level}/{tower.max_level})"
                 )
+            missing_hp = tower.max_hp - tower.hp
+            if missing_hp > 0:
+                heal_cost = self.heal_cost(tower)
+                heal_text = f"Heal (H) costs {heal_cost} to restore {missing_hp} HP during breaks"
+            else:
+                heal_text = "Tower is at full health"
         texts = [
             f"Money: {self.money}",
             f"Lives: {self.lives}",
@@ -751,6 +892,7 @@ class Game:
             f"Next wave cooldown: {cooldown} — press N when ready",
             "Walls slow enemies inside their radius; towers attack automatically.",
             upgrade_text,
+            heal_text,
         ]
         for i, text in enumerate(texts):
             label = self.font.render(text, True, (240, 240, 240))
