@@ -477,6 +477,21 @@ ENEMY_TYPES: Dict[str, EnemyType] = {
 }
 
 
+@dataclass
+class WaveEntry:
+    enemy_type: str
+    count: int
+    interval: float
+    hp_multiplier: float = 1.0
+    speed_multiplier: float = 1.0
+    reward_multiplier: float = 1.0
+
+
+@dataclass
+class WaveDefinition:
+    entries: List[WaveEntry]
+
+
 def generate_wave_definitions(total_waves: int) -> List[WaveDefinition]:
     waves: List[WaveDefinition] = []
     for idx in range(total_waves):
@@ -520,21 +535,6 @@ def generate_wave_definitions(total_waves: int) -> List[WaveDefinition]:
             )
         waves.append(WaveDefinition(entries))
     return waves
-
-
-@dataclass
-class WaveEntry:
-    enemy_type: str
-    count: int
-    interval: float
-    hp_multiplier: float = 1.0
-    speed_multiplier: float = 1.0
-    reward_multiplier: float = 1.0
-
-
-@dataclass
-class WaveDefinition:
-    entries: List[WaveEntry]
 
 
 class WaveManager:
