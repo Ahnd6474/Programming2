@@ -165,15 +165,22 @@ class EnemyType:
 
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, path: List[Tuple[float, float]], enemy_type: EnemyType):
+    def __init__(
+        self,
+        path: List[Tuple[float, float]],
+        enemy_type: EnemyType,
+        hp_multiplier: float = 1.0,
+        speed_multiplier: float = 1.0,
+        reward_multiplier: float = 1.0,
+    ):
         super().__init__()
         self.path = path
         self.current_index = 0
         self.enemy_type = enemy_type
-        self.speed = enemy_type.speed
-        self.max_hp = enemy_type.hp
-        self.hp = enemy_type.hp
-        self.reward = enemy_type.reward
+        self.base_speed = enemy_type.speed * speed_multiplier
+        self.max_hp = math.ceil(enemy_type.hp * hp_multiplier)
+        self.hp = self.max_hp
+        self.reward = math.ceil(enemy_type.reward * reward_multiplier)
         diameter = enemy_type.radius * 2
         self.image = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
         pygame.draw.circle(self.image, enemy_type.color, (enemy_type.radius, enemy_type.radius), enemy_type.radius)
@@ -197,7 +204,8 @@ class Enemy(pygame.sprite.Sprite):
             return
         if distance != 0:
             direction = direction.normalize()
-        self.pos += direction * self.speed * dt
+        effective_speed = self.base_speed * game.get_speed_modifier(self.pos)
+        self.pos += direction * effective_speed * dt
         self.rect.center = self.pos
 
     def take_damage(self, amount: float, game: "Game") -> None:
@@ -253,6 +261,9 @@ class TowerType:
     damage: float
     projectile_speed: float
     color: Color
+    is_wall: bool = False
+    slow_factor: float = 1.0
+    slow_radius: float = 0.0
 
 
 class Tower(pygame.sprite.Sprite):
@@ -265,11 +276,16 @@ class Tower(pygame.sprite.Sprite):
         self.damage = tower_type.damage
         self.projectile_speed = tower_type.projectile_speed
         self.time_since_last_shot = 0.0
+        self.level = 1
+        self.max_level = 5
+        self.is_wall = tower_type.is_wall
         self.image = pygame.Surface((50, 50), pygame.SRCALPHA)
         pygame.draw.circle(self.image, tower_type.color, (25, 25), 24)
         self.rect = self.image.get_rect(center=tile.center)
 
     def update(self, dt: float, game: "Game") -> None:
+        if self.is_wall:
+            return
         self.time_since_last_shot += dt
         if self.time_since_last_shot < self.fire_rate:
             return
@@ -290,10 +306,25 @@ class Tower(pygame.sprite.Sprite):
                 closest_dist = dist
         return closest
 
+    def upgrade_cost(self) -> int:
+        return int(self.tower_type.cost * (0.7 + 0.4 * self.level))
+
+    def upgrade(self) -> None:
+        if self.level >= self.max_level:
+            return
+        self.level += 1
+        if self.is_wall:
+            updated_fields = {**vars(self.tower_type), "slow_radius": self.tower_type.slow_radius + 8}
+            self.tower_type = TowerType(**updated_fields)
+        else:
+            self.range *= 1.12
+            self.damage *= 1.18
+            self.fire_rate = max(0.2, self.fire_rate * 0.92)
+
 
 TOWER_TYPES: Dict[str, TowerType] = {
     "basic": TowerType(
-        name="기본",
+        name="Basic",
         cost=50,
         range=170,
         fire_rate=0.9,
@@ -302,7 +333,7 @@ TOWER_TYPES: Dict[str, TowerType] = {
         color=(100, 160, 220),
     ),
     "sniper": TowerType(
-        name="저격",
+        name="Sniper",
         cost=85,
         range=280,
         fire_rate=1.8,
@@ -311,7 +342,7 @@ TOWER_TYPES: Dict[str, TowerType] = {
         color=(220, 200, 120),
     ),
     "rapid": TowerType(
-        name="연사",
+        name="Rapid",
         cost=70,
         range=140,
         fire_rate=0.45,
@@ -319,14 +350,71 @@ TOWER_TYPES: Dict[str, TowerType] = {
         projectile_speed=360,
         color=(150, 220, 140),
     ),
+    "wall": TowerType(
+        name="Wall",
+        cost=40,
+        range=0,
+        fire_rate=0,
+        damage=0,
+        projectile_speed=0,
+        color=(90, 90, 110),
+        is_wall=True,
+        slow_factor=0.35,
+        slow_radius=65,
+    ),
 }
 
 
 ENEMY_TYPES: Dict[str, EnemyType] = {
-    "grunt": EnemyType("기본", speed=60, hp=60, reward=18, color=(220, 80, 80), radius=14),
-    "swift": EnemyType("신속", speed=95, hp=45, reward=15, color=(120, 200, 140), radius=13),
-    "tank": EnemyType("탱커", speed=40, hp=130, reward=35, color=(170, 140, 220), radius=16),
+    "grunt": EnemyType("Grunt", speed=60, hp=60, reward=18, color=(220, 80, 80), radius=14),
+    "swift": EnemyType("Swift", speed=95, hp=45, reward=15, color=(120, 200, 140), radius=13),
+    "tank": EnemyType("Tank", speed=40, hp=130, reward=35, color=(170, 140, 220), radius=16),
 }
+
+
+def generate_wave_definitions(total_waves: int) -> List[WaveDefinition]:
+    waves: List[WaveDefinition] = []
+    for idx in range(total_waves):
+        wave_number = idx + 1
+        base_count = 8 + wave_number // 2
+        burst_count = 4 + wave_number // 4
+        hp_scale = 1.0 + wave_number * 0.05
+        reward_scale = 1.0 + wave_number * 0.02
+        grunt_interval = max(0.22, 1.05 - wave_number * 0.008)
+        entries: List[WaveEntry] = [
+            WaveEntry(
+                "grunt",
+                count=base_count,
+                interval=grunt_interval,
+                hp_multiplier=hp_scale * 0.85,
+                speed_multiplier=1.0 + wave_number * 0.004,
+                reward_multiplier=reward_scale * 0.65,
+            )
+        ]
+        if wave_number % 3 == 0:
+            entries.append(
+                WaveEntry(
+                    "swift",
+                    count=burst_count,
+                    interval=max(0.18, 0.9 - wave_number * 0.006),
+                    hp_multiplier=hp_scale * 0.7,
+                    speed_multiplier=1.1 + wave_number * 0.006,
+                    reward_multiplier=reward_scale * 0.5,
+                )
+            )
+        if wave_number % 5 == 0:
+            entries.append(
+                WaveEntry(
+                    "tank",
+                    count=max(3, wave_number // 8),
+                    interval=max(0.35, 1.4 - wave_number * 0.0045),
+                    hp_multiplier=hp_scale * 1.4,
+                    speed_multiplier=0.9 + wave_number * 0.0025,
+                    reward_multiplier=reward_scale,
+                )
+            )
+        waves.append(WaveDefinition(entries))
+    return waves
 
 
 @dataclass
@@ -334,6 +422,9 @@ class WaveEntry:
     enemy_type: str
     count: int
     interval: float
+    hp_multiplier: float = 1.0
+    speed_multiplier: float = 1.0
+    reward_multiplier: float = 1.0
 
 
 @dataclass
@@ -342,16 +433,18 @@ class WaveDefinition:
 
 
 class WaveManager:
-    def __init__(self, waves: List[WaveDefinition]):
+    def __init__(self, waves: List[WaveDefinition], cooldown_duration: float = 3.5):
         self.waves = waves
         self.current_wave = -1
         self.time_since_last_spawn = 0.0
         self.active = False
         self.entry_index = 0
         self.spawned_in_entry = 0
+        self.cooldown_duration = cooldown_duration
+        self.cooldown_remaining = 0.0
 
     def start_next_wave(self) -> None:
-        if self.active:
+        if self.active or self.cooldown_remaining > 0:
             return
         if self.current_wave + 1 >= len(self.waves):
             return
@@ -359,9 +452,12 @@ class WaveManager:
         self.entry_index = 0
         self.spawned_in_entry = 0
         self.time_since_last_spawn = 0.0
+        self.cooldown_remaining = 0.0
         self.active = True
 
     def update(self, dt: float, game: "Game") -> None:
+        if self.cooldown_remaining > 0 and not self.active:
+            self.cooldown_remaining = max(0.0, self.cooldown_remaining - dt)
         if not self.active or self.current_wave >= len(self.waves):
             return
         self.time_since_last_spawn += dt
@@ -379,13 +475,21 @@ class WaveManager:
             break
         if self.entry_index >= len(wave.entries) and not game.enemies:
             self.active = False
+            if self.current_wave < len(self.waves) - 1:
+                self.cooldown_remaining = self.cooldown_duration
 
     def spawn_enemy(self, game: "Game", entry: WaveEntry) -> None:
         path = game.hex_map.path_from_border_to_base()
         if len(path) < 2:
             return
         enemy_type = game.enemy_types[entry.enemy_type]
-        enemy = Enemy(path, enemy_type)
+        enemy = Enemy(
+            path,
+            enemy_type,
+            hp_multiplier=entry.hp_multiplier,
+            speed_multiplier=entry.speed_multiplier,
+            reward_multiplier=entry.reward_multiplier,
+        )
         enemy.game = game
         game.enemies.add(enemy)
         self.spawned_in_entry += 1
@@ -420,27 +524,15 @@ class Game:
         self.button_font = pygame.font.SysFont(FONT_NAME, 26)
         self.enemy_types = ENEMY_TYPES
         self.tower_types = TOWER_TYPES
-        self.wave_definitions = [
-            WaveDefinition([
-                WaveEntry("grunt", 8, 1.0),
-            ]),
-            WaveDefinition([
-                WaveEntry("grunt", 10, 0.9),
-                WaveEntry("swift", 6, 0.8),
-            ]),
-            WaveDefinition([
-                WaveEntry("swift", 10, 0.7),
-                WaveEntry("tank", 6, 1.2),
-            ]),
-        ]
+        self.wave_definitions = generate_wave_definitions(600)
         self.state = "intro"
         self.running = True
         self.rules_text = [
-            "목표: 기지(중앙 육각형)를 끝까지 방어하세요!",
-            "웨이브: N 키로 다음 웨이브를 시작할 수 있습니다.",
-            "타워 건설: 마우스 클릭 또는 Space로 선택 타워를 건설하세요.",
-            "탐색: 화살표, WASD, QE 키로 타일을 이동합니다.",
-            "숫자 키로 타워 종류를 변경할 수 있습니다.",
+            "Goal: defend the central base until every wave is cleared.",
+            "Waves: a short break begins after each wave; press N once it is ready.",
+            "Building: click a tile or press Space/Enter to build the selected item.",
+            "Navigation: move the selector with arrows, WASD, or Q/E diagonals.",
+            "Numbers: change build type with 1-9. Click an existing tower to upgrade it.",
         ]
         self.intro_buttons = {
             "start": pygame.Rect(WIDTH // 2 - 170, HEIGHT // 2 + 20, 340, 70),
@@ -463,7 +555,7 @@ class Game:
         self.selected_tower_key = self.tower_keys[0]
         self.money = 200
         self.lives = 20
-        self.wave_manager = WaveManager(self.wave_definitions)
+        self.wave_manager = WaveManager(self.wave_definitions, cooldown_duration=4.0)
         self.home_base = HomeBase(self.hex_map.tiles[self.hex_map.base_coord])
         self.selected_tile: Optional[Tile] = self.hex_map.tiles.get(self.hex_map.base_coord)
 
@@ -515,6 +607,7 @@ class Game:
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             tile = self.hex_map.get_tile_at_pixel(*event.pos)
             if tile:
+                self.selected_tile = tile
                 self.try_build_tower(tile)
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_n:
@@ -559,7 +652,10 @@ class Game:
             self.selected_tile = self.hex_map.tiles[new_coord]
 
     def try_build_tower(self, tile: Tile) -> None:
-        if not tile.buildable or tile.tower is not None:
+        if not tile.buildable:
+            return
+        if tile.tower is not None:
+            self.try_upgrade_tower(tile.tower)
             return
         tower_type = self.tower_types[self.selected_tower_key]
         if self.money < tower_type.cost:
@@ -568,6 +664,25 @@ class Game:
         tile.tower = tower
         self.towers.add(tower)
         self.money -= tower_type.cost
+
+    def try_upgrade_tower(self, tower: Tower) -> None:
+        if tower.level >= tower.max_level:
+            return
+        cost = tower.upgrade_cost()
+        if self.money < cost:
+            return
+        self.money -= cost
+        tower.upgrade()
+
+    def get_speed_modifier(self, position: pygame.Vector2) -> float:
+        modifier = 1.0
+        for tower in self.towers:
+            if not tower.is_wall:
+                continue
+            distance = pygame.Vector2(tower.rect.center).distance_to(position)
+            if distance <= tower.tower_type.slow_radius:
+                modifier = min(modifier, tower.tower_type.slow_factor)
+        return max(0.1, modifier)
 
     def update(self, dt: float) -> None:
         if self.state != "playing":
@@ -580,9 +695,9 @@ class Game:
         for projectile in list(self.projectiles):
             projectile.update(dt)
         if self.lives <= 0:
-            self.finish_game("방어 실패!")
+            self.finish_game("Defense failed!")
         elif self.all_waves_cleared():
-            self.finish_game("모든 웨이브 방어 성공!")
+            self.finish_game("All 600 waves have been defended!")
 
     def draw(self) -> None:
         if self.state == "intro":
@@ -615,13 +730,27 @@ class Game:
             ("*" if key == self.selected_tower_key else "")
             for idx, key in enumerate(self.tower_keys)
         )
+        cooldown = (
+            "ready" if self.wave_manager.cooldown_remaining <= 0 else f"{self.wave_manager.cooldown_remaining:0.1f}s"
+        )
+        upgrade_text = "Click a built tower to upgrade it"
+        if self.selected_tile and self.selected_tile.tower:
+            tower = self.selected_tile.tower
+            if tower.level >= tower.max_level:
+                upgrade_text = "Selected tower is at max level"
+            else:
+                upgrade_text = (
+                    f"Upgrade cost: {tower.upgrade_cost()} (Lv {tower.level}/{tower.max_level})"
+                )
         texts = [
             f"Money: {self.money}",
             f"Lives: {self.lives}",
             f"Wave: {wave_current}/{wave_total}",
-            f"선택 타워: {selected_type.name} (비용 {selected_type.cost})",
-            f"[숫자1~{len(self.tower_keys)}] {tower_text}",
-            "클릭 / Space: 건설, 화살/WASDQE 이동, N: 다음 웨이브",
+            f"Selected: {selected_type.name} (Cost {selected_type.cost})",
+            f"[1-{len(self.tower_keys)}] {tower_text}",
+            f"Next wave cooldown: {cooldown} — press N when ready",
+            "Walls slow enemies inside their radius; towers attack automatically.",
+            upgrade_text,
         ]
         for i, text in enumerate(texts):
             label = self.font.render(text, True, (240, 240, 240))
@@ -632,31 +761,31 @@ class Game:
         title = self.title_font.render("Hex Tower Defense", True, (245, 245, 245))
         title_rect = title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 120))
         self.screen.blit(title, title_rect)
-        subtitle = self.sub_title_font.render("기지를 지키기 위한 방어 전략을 세워보세요", True, (200, 200, 220))
+        subtitle = self.sub_title_font.render("Strategize and hold the line", True, (200, 200, 220))
         self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 60)))
         mouse_pos = pygame.mouse.get_pos()
-        self.draw_button(self.intro_buttons["start"], "게임 시작", mouse_pos)
-        self.draw_button(self.intro_buttons["rules"], "게임 규칙", mouse_pos)
+        self.draw_button(self.intro_buttons["start"], "Start", mouse_pos)
+        self.draw_button(self.intro_buttons["rules"], "Rules", mouse_pos)
 
     def draw_rules(self) -> None:
         self.screen.fill((10, 15, 30))
-        title = self.title_font.render("게임 규칙", True, (240, 240, 240))
+        title = self.title_font.render("Rules", True, (240, 240, 240))
         self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 140)))
         for i, line in enumerate(self.rules_text):
             label = self.sub_title_font.render(line, True, (230, 230, 240))
             self.screen.blit(label, (120, 240 + i * 48))
-        self.draw_button(self.rules_back_button, "돌아가기", pygame.mouse.get_pos())
+        self.draw_button(self.rules_back_button, "Back", pygame.mouse.get_pos())
 
     def draw_outro(self) -> None:
         self.screen.fill((5, 10, 20))
-        title = self.title_font.render("게임 종료", True, (240, 240, 240))
+        title = self.title_font.render("Game Over", True, (240, 240, 240))
         self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 150)))
         result = self.sub_title_font.render(self.game_result or "", True, (200, 220, 255))
         self.screen.blit(result, result.get_rect(center=(WIDTH // 2, 230)))
         for i, line in enumerate(self.outro_summary):
             label = self.button_font.render(line, True, (220, 220, 230))
             self.screen.blit(label, label.get_rect(center=(WIDTH // 2, 320 + i * 40)))
-        self.draw_button(self.outro_buttons["menu"], "메인 메뉴로", pygame.mouse.get_pos())
+        self.draw_button(self.outro_buttons["menu"], "Main Menu", pygame.mouse.get_pos())
 
     def draw_button(self, rect: pygame.Rect, text: str, mouse_pos: Tuple[int, int]) -> None:
         hovered = rect.collidepoint(mouse_pos)
@@ -673,9 +802,9 @@ class Game:
         current_wave = max(0, self.wave_manager.current_wave + 1)
         self.game_result = message
         self.outro_summary = [
-            f"진행 웨이브: {current_wave}/{total_waves}",
-            f"남은 돈: {self.money}",
-            f"남은 목숨: {max(self.lives, 0)}",
+            f"Waves survived: {current_wave}/{total_waves}",
+            f"Money left: {self.money}",
+            f"Lives left: {max(self.lives, 0)}",
         ]
         self.state = "outro"
 
