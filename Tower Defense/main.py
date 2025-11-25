@@ -543,7 +543,15 @@ def generate_wave_definitions(total_waves: int) -> List[WaveDefinition]:
 
 
 class WaveManager:
-    def __init__(self, waves: List[WaveDefinition], cooldown_duration: float = 3.5):
+    def __init__(
+        self,
+        waves: List[WaveDefinition],
+        cooldown_duration: float = 3.5,
+        base_mob_cap: int = 20,
+        mob_cap_growth: int = 2,
+        base_spawn_rate_multiplier: float = 2.0,
+        spawn_rate_growth: float = 0.05,
+    ):
         self.waves = waves
         self.current_wave = -1
         self.time_since_last_spawn = 0.0
@@ -552,6 +560,12 @@ class WaveManager:
         self.spawned_in_entry = 0
         self.cooldown_duration = cooldown_duration
         self.cooldown_remaining = 0.0
+        self.base_mob_cap = base_mob_cap
+        self.mob_cap_growth = mob_cap_growth
+        self.base_spawn_rate_multiplier = base_spawn_rate_multiplier
+        self.spawn_rate_growth = spawn_rate_growth
+        self.current_mob_cap = base_mob_cap
+        self.current_spawn_rate_multiplier = base_spawn_rate_multiplier
 
     def start_next_wave(self) -> None:
         if self.active or self.cooldown_remaining > 0:
@@ -564,6 +578,9 @@ class WaveManager:
         self.time_since_last_spawn = 0.0
         self.cooldown_remaining = 0.0
         self.active = True
+        wave_number = self.current_wave + 1
+        self.current_mob_cap = self.base_mob_cap + self.mob_cap_growth * wave_number
+        self.current_spawn_rate_multiplier = self.base_spawn_rate_multiplier + self.spawn_rate_growth * wave_number
 
     def update(self, dt: float, game: "Game") -> None:
         if self.cooldown_remaining > 0 and not self.active:
@@ -579,7 +596,7 @@ class WaveManager:
                 self.spawned_in_entry = 0
                 self.time_since_last_spawn = 0.0
                 continue
-            if self.time_since_last_spawn >= entry.interval:
+            if self.time_since_last_spawn >= entry.interval / self.current_spawn_rate_multiplier:
                 self.spawn_enemy(game, entry)
                 self.time_since_last_spawn = 0.0
             break
@@ -589,6 +606,8 @@ class WaveManager:
                 self.cooldown_remaining = self.cooldown_duration
 
     def spawn_enemy(self, game: "Game", entry: WaveEntry) -> None:
+        if len(game.enemies) >= self.current_mob_cap:
+            return
         path = game.hex_map.path_from_border_to_base()
         if len(path) < 2:
             return
@@ -685,7 +704,7 @@ class Game:
             "Building: click a tile or press Space/Enter to build the selected item.",
             "Navigation: move the selector with arrows, WASD, or Q/E diagonals.",
             "Numbers: change build type with 1-9. Click an existing tower to upgrade it.",
-            "Breaks: towers can be healed with H during wave breaks using coins.",
+            "Breaks: right-click a tower to heal it during wave breaks using coins.",
         ]
         self.intro_buttons = {
             "start": pygame.Rect(WIDTH // 2 - 170, HEIGHT // 2 + 20, 340, 70),
@@ -760,19 +779,20 @@ class Game:
     def handle_gameplay_events(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEMOTION:
             self.selected_tile = self.hex_map.get_tile_at_pixel(*event.pos)
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            tile = self.hex_map.get_tile_at_pixel(*event.pos)
-            if tile:
-                self.selected_tile = tile
-                self.try_build_tower(tile)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                tile = self.hex_map.get_tile_at_pixel(*event.pos)
+                if tile:
+                    self.selected_tile = tile
+                    self.try_build_tower(tile)
+            elif event.button == 3:
+                self.try_heal_selected_tower()
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_n:
                 self.wave_manager.start_next_wave()
             elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
                 if self.selected_tile:
                     self.try_build_tower(self.selected_tile)
-            elif event.key == pygame.K_h:
-                self.try_heal_selected_tower()
             elif pygame.K_1 <= event.key <= pygame.K_9:
                 index = event.key - pygame.K_1
                 if index < len(self.tower_keys):
@@ -917,7 +937,7 @@ class Game:
             "ready" if self.wave_manager.cooldown_remaining <= 0 else f"{self.wave_manager.cooldown_remaining:0.1f}s"
         )
         upgrade_text = "Click a built tower to upgrade it"
-        heal_text = "Healing available only during breaks (H key)."
+        heal_text = "Healing available only during breaks (right-click)."
         if not self.can_heal_towers():
             heal_text = "Healing disabled until the next break between waves."
         if self.selected_tile and self.selected_tile.tower:
@@ -931,7 +951,9 @@ class Game:
             missing_hp = tower.max_hp - tower.hp
             if missing_hp > 0:
                 heal_cost = self.heal_cost(tower)
-                heal_text = f"Heal (H) costs {heal_cost} to restore {missing_hp} HP during breaks"
+                heal_text = (
+                    f"Heal (right-click) costs {heal_cost} to restore {missing_hp} HP during breaks"
+                )
             else:
                 heal_text = "Tower is at full health"
         texts = [
