@@ -2,6 +2,7 @@ import math
 import random
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pygame
@@ -13,6 +14,10 @@ HEX_SIZE = 44
 MAP_RADIUS = 7
 MAP_OFFSET = (WIDTH // 2, HEIGHT // 2 + 20)
 FONT_NAME = "arial"
+MUSIC_FILES = {
+    "menu": "start-272637.mp3",
+    "game": "warrior-defense-fighting-music-335681.mp3",
+}
 
 
 Color = Tuple[int, int, int]
@@ -617,6 +622,47 @@ class HomeBase:
         surface.blit(text, text_rect)
 
 
+class MusicPlayer:
+    def __init__(self, base_path: Path):
+        self.enabled = True
+        try:
+            pygame.mixer.init()
+        except pygame.error as exc:
+            self.enabled = False
+            print(f"[music] Audio disabled: {exc}")
+            return
+        self.tracks = {key: base_path / filename for key, filename in MUSIC_FILES.items()}
+
+    def play(self, key: str, *, loop: bool, volume: float, fade_ms: int = 500) -> None:
+        if not self.enabled:
+            return
+        track = self.tracks.get(key)
+        if track is None or not track.exists():
+            print(f"[music] Missing track: {track}")
+            return
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.fadeout(fade_ms)
+        try:
+            pygame.mixer.music.load(str(track))
+            pygame.mixer.music.set_volume(volume)
+            loops = -1 if loop else 0
+            pygame.mixer.music.play(loops=loops, fade_ms=fade_ms)
+        except pygame.error as exc:
+            print(f"[music] Failed to play {track}: {exc}")
+
+    def play_menu(self) -> None:
+        self.play("menu", loop=True, volume=0.55)
+
+    def play_game(self) -> None:
+        self.play("game", loop=True, volume=0.45)
+
+    def stop(self, fade_ms: int = 300) -> None:
+        if not self.enabled:
+            return
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.fadeout(fade_ms)
+
+
 class Game:
     def __init__(self) -> None:
         pygame.init()
@@ -627,6 +673,7 @@ class Game:
         self.title_font = pygame.font.SysFont(FONT_NAME, 64)
         self.sub_title_font = pygame.font.SysFont(FONT_NAME, 30)
         self.button_font = pygame.font.SysFont(FONT_NAME, 26)
+        self.music = MusicPlayer(Path(__file__).resolve().parent)
         self.enemy_types = ENEMY_TYPES
         self.tower_types = TOWER_TYPES
         self.wave_definitions = generate_wave_definitions(600)
@@ -651,6 +698,7 @@ class Game:
         self.game_result = ""
         self.outro_summary: List[str] = []
         self.setup_gameplay()
+        self.music.play_menu()
 
     def setup_gameplay(self) -> None:
         self.hex_map = HexMap(MAP_RADIUS, HEX_SIZE, MAP_OFFSET)
@@ -671,6 +719,7 @@ class Game:
             self.handle_events()
             self.update(dt)
             self.draw()
+        self.music.stop()
         pygame.quit()
         sys.exit()
 
@@ -706,6 +755,7 @@ class Game:
                 self.state = "intro"
                 self.game_result = ""
                 self.outro_summary = []
+                self.music.play_menu()
 
     def handle_gameplay_events(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEMOTION:
@@ -734,6 +784,7 @@ class Game:
         self.setup_gameplay()
         self.state = "playing"
         self.wave_manager.start_next_wave()
+        self.music.play_game()
 
     def handle_keyboard_selection(self, key: int) -> None:
         if not self.selected_tile:
@@ -949,6 +1000,7 @@ class Game:
             f"Lives left: {max(self.lives, 0)}",
         ]
         self.state = "outro"
+        self.music.play_menu()
 
     def all_waves_cleared(self) -> bool:
         if not self.wave_manager.waves:
